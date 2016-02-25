@@ -1,0 +1,155 @@
+/// AJAX FleetLink Provisioning  - agent code
+
+
+
+
+
+
+//////////////////////  ROCKY SETUP  //////////////////////////
+
+#require "Rocky.class.nut:1.1.1"
+rockySettings <- {
+    timeout = 15
+};
+
+app <- Rocky(rockySettings);
+
+
+//////////////////////  GLOBAL VARIABLES  //////////////////////////
+// This is used to defer HTP responses as per
+//https://electricimp.com/docs/resources/interactive/
+savedRequestContext <- null;
+settingsStorage <- {} ; // Global table containing device and agent settings
+settingsStorage.position <- { latitude = 38.485, longitude = -122.715 };
+settingsStorage.deviceOnline <- false;
+
+////////////////////  AGENT DATA STORAGE  /////////////////////
+// Load the latest stored server settings on boot up...if they exist
+function loadSettings() {
+    local tempStorage = server.load() ;
+    if (tempStorage.len() != 0) {
+        settingsStorage = tempStorage; // if there ARE stored settings, use them.
+    //    server.log("Settings loaded from server");
+    } else {  // otherwise use default settings
+        settingsStorage.position = { latitude = 38.485, longitude = -122.715 };
+        settingsStorage.deviceOnline = false;
+        storeSettings(settingsStorage);
+        server.log("No settings available from server, defaults used");
+    }
+}
+
+
+//store settings to server
+function storeSettings(newStorage) {
+    local err = server.save(newStorage);
+    if (err == 0) {
+     //   server.log("New settings saved to server");
+    } else {
+        server.log("New settings NOT saved to server. Error: " + err.tostring());
+    }
+}
+
+
+function updateDeviceIsConnected() {
+    settingsStorage.deviceOnline = device.isconnected();
+    storeSettings(settingsStorage); //update server settings
+}
+
+function checkPositionRange(positions) {
+    foreach(position, value in positions) {
+        //make sure position value is numeric
+        if (typeof value == "string") value = value.tointeger();
+        //store adjusted  value in position
+        positions[position] = value;
+    }
+    return positions
+}
+
+
+////////////////////  DATA PACKET HANDLER  /////////////////////
+function processDataPacket(dataString) {
+    // send the save http response now that you've got the device data response
+    savedRequestContext.send(200, { dataPacket = dataString });
+    //server.log("context ID= " + savedRequestContext.id);
+}
+
+
+
+/////////////////////  DEVICE LISTENERS  ///////////////////////
+
+
+
+// Send back the data packet to requesting app when the device supplies it
+device.on("dataPacket", processDataPacket);
+
+
+
+
+/////////////////  ROCKY HTTP HANDLERS (APPP LISTENERS) /////////////////////
+
+
+// Allows an application to query the device settings
+// note transition from online to offline can take as much as 10 minutes
+//transition from offline to online ia a few seconds, however
+app.get("/settings", function(context) {
+    updateDeviceIsConnected();
+    context.send(200, {settingsStorage = settingsStorage});
+});
+
+
+
+
+// App can send a new position to the agent for storage in both device and imp server
+// This is used on device provisioning by the smart phone app
+
+app.post("/position", function(context) {
+        server.log("Position setting attempt");
+    //convert JSON string to squirrel table
+    local data = http.jsondecode(context.req.body);
+            local receivedLatitude = format("%.8f", data.position.latitude);
+            local receivedLongitude = format("%.9f", data.position.longitude);
+
+     foreach(parameter, value in data.position) {
+        //make sure position value is numeric
+        if (typeof value == "string") value = value.tointeger();
+        //store adjusted  value in position
+        data.position[parameter] = value;
+    }
+        settingsStorage.position = data.position; // update agent settings
+        storeSettings(settingsStorage); //update server settings
+        server.log("Settings sent App -> Agent-> Device -> Server");
+        server.log("Latitude= " + settingsStorage.position.latitude);
+    // send the response
+    context.send(200, { position = data.position });
+});
+
+
+
+app.post("/sendInterest", function(context) {
+    // If the web page sends an interest packet to this handler
+    // then forward to device
+    local interestPacket = http.jsondecode(context.req.body);
+    local interestString = interestPacket.interestPacketString ; // turn it into string and add source ID
+    server.log("Interest sent to device: " + interestString);
+    savedRequestContext = context; // save the http context for when the device data is returned
+    device.send("interest", interestString); //send to device as simple string
+});
+
+
+app.post("/setRangeMode", function(context) {
+    // If the web page sends an interest packet to this handler
+    // then forward to device
+    local data = http.jsondecode(context.req.body);
+    local rangeModeDesiredState = data.rangeModeState;
+    //server.log("app requests range mode : " + rangeModeDesiredState);
+
+    device.send("setRangeMode", rangeModeDesiredState); //send to device as boolean
+
+    context.send(200, { setRangeMode = data.rangeModeState });
+});
+
+
+/////////////////  RUN AT LOAD TIME /////////////////////
+//storeSettings(settingsStorage);
+loadSettings();
+device.onconnect(updateDeviceIsConnected);
