@@ -95,6 +95,24 @@
                 document.getElementById("modbusFC").value + "/"  +
                 modbusRegister + "/"  +
                 document.getElementById("modbusSize").value + "/"  ;
+
+                // hide the wrong form of results display
+
+
+                switch(modbusRegister) {
+                    case 50115:
+                    document.getElementById("stringDataRepresentation").style.visibility="hidden";
+                    document.getElementById("decimalDataValue").style.visibility="visible";
+                    break;
+                    case 50004:
+                    document.getElementById("stringDataRepresentation").style.visibility="visible";
+                    document.getElementById("decimalDataValue").style.visibility="hidden";
+                    break;
+                    default:
+                    document.getElementById("stringDataRepresentation").style.visibility="visible";
+                    document.getElementById("decimalDataValue").style.visibility="visible";
+                  }
+
             break;
 
             case "f":
@@ -156,7 +174,7 @@
                                     var returnedModbusDataHex = "0x" + parsedDataString[7];
                                     document.getElementById("hexadecimalDataValue").textContent = returnedModbusDataHex;
                                     // and in decimal
-                                    document.getElementById("decimalDataValue").textContent =  parseInt(returnedModbusDataHex) ;
+                                    document.getElementById("decimalDataValue").textContent =  parseInt(returnedModbusDataHex)/1000 + "  kWh" ;
                                     // and in string form, assuming modbus data is ascii characters in hex form
                                     var stringRepresentation = "";
                                     for (i = 0; i < parsedDataString[7].length; i=i+2) {

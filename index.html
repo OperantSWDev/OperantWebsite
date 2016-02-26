@@ -26,8 +26,6 @@
   <script src="http://maps.google.com/maps/api/js"></script>
   <script src="js/applicationMobile.js"></script>
 	<script src="http://ajax.googleapis.com/ajax/libs/jquery/1/jquery.min.js"></script>
-	<script src="js/jquery.fittext.js"></script>
-
 
 
 <body>
@@ -45,7 +43,7 @@
 
 				<div data-role="header" style:"width:100%">
 					<a href="#dataPanel" class="ui-btn ui-btn-inline ui-corner-all ui-shadow" id="dataOpenButton"
-					style="width:20%;float:left; ;margin-left:5%;" >< Open Data Settings</a>
+					style="width:15%;float:left; ;margin-left:5%; font-size:1.2em" >< Open Data Settings</a>
 				</div>
         <p>
 
@@ -61,9 +59,8 @@
 					<div data-role="main" style="width:35%;  float:right; margin-bottom:0%; margin-top:2%; ">
 						  <div data-role="main" style="width:95%; height: 20%;float:right; margin-bottom:2%; border: 2px solid gray;border-radius: 10px; padding:5px"  >
 												<div data-role="main"  style="width:100%">
-
-												<label id="gatewayLabel" style=" margin-left:30%; width:60%">Select Gateway</label>
-												<img  id="gatewayIcon"  src="img/gatewayIcon2.png" style="margin-left:42%;"  height="12%" width="12%">
+												<label id="gatewayLabel" style=" float:left; margin-left:5%; margin-bottom:25px; width:60%; font-size:1.2em">Select Gateway</label>
+												<img  id="gatewayIcon"  src="img/gatewayIcon2.png" style="float:right; margin-top:20px; margin-left:10%; margin-right:10%"  height="15%" width="15%">
 
 								            <select   id="selectedAccessPoint"   data-native-menu="false"   >
 										              <option value="Unit2" selected="selected">WHITE</option>
@@ -75,53 +72,54 @@
 
 								<div data-role="main" style="width:95%; height: 20%;float:right; margin-bottom:2%; border: 2px solid gray;border-radius: 10px; padding:5px"  >
 												<div data-role="main"  style="width:100%">
-														<label id="targetLabel" style=" margin-left:30%; width:60%">Select Target</label>
-														<img  id="targetIcon"  src="img/targetIcon3.png" style="margin-left:42%;"  height="12%" width="12%">
+														<label id="targetLabel" style=" float:left; margin-left:5%; margin-bottom:25px; width:60%; font-size:1.2em">Select Target</label>
+														<img  id="targetIcon"  src="img/targetIcon3.png" style="float:right; margin-top:20px; margin-left:10%; margin-right:10%" height="15%" width="15%">
 												</div>
-												<select   id="selectedUnit"   data-native-menu="false"   >
+												<select   id="selectedUnit"   data-native-menu="false"  >
 															<option value="Unit2" selected="selected">WHITE</option>
 															<option value="Unit3">ORANGE</option>
 												</select>
 										<p>
 								</div>
+
+								<button id="sendInterestPacket"
+								onclick= "sendInterestPacket()"
+								textalign= "center"  style="float:left; width:24%;  margin-left: 8%;  margin-right:5%; border: 2px solid gray;">
+								GO
+								</button>
+
+								<div	 style="float:left; width:75%; margin-top:2%; margin-left:8%; border: 2px solid gray;border-radius: 10px; padding:8px; padding-left:5%"
+									id="decimalDataValue" >
+												<label textalign= "center" >--</label>
+								</div>
+
+								<div  style="float:left; width:75%; margin-top:2%; margin-left:8%; border: 2px solid gray;border-radius: 10px; padding:8px; padding-left:5%"
+											id="stringDataRepresentation" >
+												<label>--</label>
+								</div>
+
 							</div>
 				</div>
 
 
 
-	      <div data-role="main" class="container"  width=90% >
-								<button id="sendInterestPacket"
-								onclick= "sendInterestPacket()"
-								textalign= "center"  style="float:left; width:24%;  margin-left: 0%;  margin-right:5%; border: 2px solid gray;">
-								GO
-								</button>
 
-								<div  style="float:left; width:30%; margin-top:1%; margin-right:2%;  border: 2px solid gray;border-radius: 10px; padding:5px"
-											id="stringDataRepresentation" >
-												<label></label>
-								</div>
-
-								<div	style="float:right; width:30%; margin-top:1%; margin-right:0%; border: 2px solid gray;border-radius: 10px;; padding:5px"
-									id="decimalDataValue" >
-												<label></label>
-								</div>
-				</div>
-
-
-
-	      <div data-role="collapsible"  id="collapseButton" style="margin-left:0%; width:100%" >
+	      <div data-role="collapsible"  id="collapseButton" style="margin-left:5%; width:60%" >
 		        <h2 >more...</h2>
 
-						<div style=" width:30%; ">
+
+
+
+						<div style="width:90%; margin-top:1%; margin-right:2%;  border: 2px solid gray;border-radius: 10px; padding:5px">
 						<label id="hexadecimalDataValue"></label>
 		        </div>
 
 					  <p>
-		        <div style=" width:30%; " >
+		        <div style="width:90%; margin-top:1%; margin-right:2%;  border: 2px solid gray;border-radius: 10px; padding:5px">
 						<label id= 'completedInterestPacket'></label>
 		        </div>
 		        <p>
-		        <div style=" width:30%; ">
+		        <div style="width:90%; margin-top:1%; margin-right:2%;  border: 2px solid gray;border-radius: 10px; padding:5px">
 						<label id="returnedDataPacket"></label>
 		        </div>
 	      </div>
@@ -132,7 +130,6 @@
 
 
 		  <div data-role="panel" id="dataPanel"  data-display="overlay">
-		    <h2>Settings</h2>
 
 		          <div class="dataPanelLabel" >
 		            <label id="dataModelLabel" ></label>
@@ -169,44 +166,27 @@
 
 		          <div class="dataPanelLabel">
 		            <label id="baseRegisterLabel" >Base Register</label>
-		            <input type="text"  id='baseRegister' value= "49999" style="border: 1px solid darkgray"></input>
+		            <input type="text"  id='baseRegister' value= "50068" style="border: 1px solid darkgray"></input>
 		          </div>
 
 		          <div class="dataPanelLabel">
 		            <label id="sunspecRegisterLabel">SunSpec Reg</label>
-		            <input type="text"  id='sunspecRegister' value= "5" style="border: 1px solid darkgray"></input>
+		            <input type="text"  id='sunspecRegister' value= "47" style="border: 1px solid darkgray"></input>
 		          </div>
 
 		          <div class="dataPanelLabel">
 		            <label id="modbusSizeLabel"># Registers</label>
 		            <select id="modbusSize" style="font-size:1.4em;">
 		            <option value="1" >1</option>
-		            <option value="2" >2</option>
-		            <option value="4" selected="selected">4</option>
+		            <option value="2" selected="selected">2</option>
+		            <option value="4" >4</option>
 		          	<!-- <option value="8" >8</option>   disbaled due to problems with high power TX-->
 		            </select>
 		          </div>
 
 		      </div>
 
-
-
 		  </div>
-
-			<script type="text/javascript">
-				$("#dataOpenButton").fitText(1.2, { minFontSize: '10px', maxFontSize: '50px' });
-				$("#gatewayLabel").fitText(1.2, { minFontSize: '10px', maxFontSize: '50px' });
-				$("#targetLabel").fitText(1.2, { minFontSize: '10px', maxFontSize: '50px' });
-				$("#sendInterestPacket").fitText(1.2, { minFontSize: '10px', maxFontSize: '50px' });
-				$("#stringDataRepresentation").fitText(1.2, { minFontSize: '10px', maxFontSize: '50px' });
-				$("#decimalDataValue").fitText(1.2, { minFontSize: '10px', maxFontSize: '50px' });
-				$("#collapseButton").fitText(1.2, { minFontSize: '10px', maxFontSize: '50px' });
-				$("#hexadecimalDataValue").fitText(1.2, { minFontSize: '10px', maxFontSize: '50px' });
-				$("#completedInterestPacket").fitText(1.2, { minFontSize: '10px', maxFontSize: '50px' });
-				$("#returnedDataPacket").fitText(1.2, { minFontSize: '10px', maxFontSize: '50px' });
-			</script>
-
-
 
 </body>
 </html>
