@@ -7,6 +7,8 @@
     var baseURL = "https://agent.electricimp.com";
     var myLatLng = {lat: 38.49, lng: -122.725};
     var mapFleetLink;
+    var targetUnitKey;
+    var accessUnitKey;
 
     var fleetLink = {
               /*1: {
@@ -38,7 +40,7 @@
                           'latitude': '38.490',
                           'longitude': '-122.726'
                         }
-                  }  /*,
+                  }  ,
               4: {
                       'serialNumber': 'Unit4',
                       'macAddress': '0xxxxxxxxx',
@@ -48,7 +50,7 @@
                           'latitude': '38.488',
                           'longitude': '-122.724'
                         }
-                  },
+                  } /*,
               5: {
                       'serialNumber': 'Unit5',
                       'macAddress': '0xxxxxxxxx',
@@ -78,41 +80,40 @@
                   targetUnitKey = key; // This is a global variable I use throughout: the site we want data from
                 }
                 if (fleetLink[key].serialNumber == accessUnitSerialNumber) {
-                  accessUnitKey = key;// This is a glabal variable I use throughout: the site we're sending the interest packet to first
+                  accessUnitKey = key;// This is a global variable I use throughout: the site we're sending the interest packet to first
                 }
           });
-          // need to combine convenience "base" and "sunspec" registers to get finalmodbus register
-          var modbusRegister = Number(document.getElementById("baseRegister").value)+Number(document.getElementById("sunspecRegister").value);
-          // now build interest packet
-          interestPacket.name = document.getElementById("dataModel").value + "/" ;
 
-          // Now, remainder depends on which data maodel was selected
 
           switch (document.getElementById("dataModel").value) {
+
+            case "c":
+                interestPacket.name + "/"  ;
+            break;
+
+            case "s":
+
+                var sunSpecRegisterValue = parseInt(document.getElementById("baseSunSpecRegister").value) +
+                 parseInt(document.getElementById("commonBlockLength").value)  +
+                 - 2 +                                                            // by convention
+                 parseInt(document.getElementById("sunSpecValueRegister").value) ;
+                console.log(sunSpecRegisterValue);
+
+                interestPacket.name =  "m/" +  // really a modbus command
+                fleetLink[targetUnitKey].macAddress   + "/" +
+                document.getElementById("sunSpecUnitId").value + "/"  +
+                document.getElementById("sunSpecFC").value + "/"  +
+                sunSpecRegisterValue + "/"  +
+                document.getElementById("sunSpecSize").value + "/"  ;
+            break;
+
             case "m":
-                interestPacket.name += fleetLink[targetUnitKey].macAddress   + "/" +
+                interestPacket.name =  "m/" + //  a native modbus command
+                fleetLink[targetUnitKey].macAddress   + "/" +
                 document.getElementById("modbusID").value + "/"  +
                 document.getElementById("modbusFC").value + "/"  +
-                modbusRegister + "/"  +
+                document.getElementById("modbusRegister").value + "/"  +
                 document.getElementById("modbusSize").value + "/"  ;
-
-                // hide the wrong form of results display
-
-
-                switch(modbusRegister) {
-                    case 50115:
-                    document.getElementById("stringDataRepresentation").style.visibility="hidden";
-                    document.getElementById("decimalDataValue").style.visibility="visible";
-                    break;
-                    case 50004:
-                    document.getElementById("stringDataRepresentation").style.visibility="visible";
-                    document.getElementById("decimalDataValue").style.visibility="hidden";
-                    break;
-                    default:
-                    document.getElementById("stringDataRepresentation").style.visibility="visible";
-                    document.getElementById("decimalDataValue").style.visibility="visible";
-                  }
-
             break;
 
             case "f":
@@ -122,14 +123,9 @@
                 console.log("data model not recognized")
           }
 
-
-
-
           document.getElementById("completedInterestPacket").textContent = interestPacket.type +
                 interestPacket.name ;
 
-          // The targeted sites may have changed, so update the map
-          updateMap();
           }
 
 
@@ -174,7 +170,7 @@
                                     var returnedModbusDataHex = "0x" + parsedDataString[7];
                                     document.getElementById("hexadecimalDataValue").textContent = returnedModbusDataHex;
                                     // and in decimal
-                                    document.getElementById("decimalDataValue").textContent =  parseInt(returnedModbusDataHex)/1000 + "  kWh" ;
+                                    document.getElementById("decimalDataValue").textContent =  parseInt(returnedModbusDataHex) ;
                                     // and in string form, assuming modbus data is ascii characters in hex form
                                     var stringRepresentation = "";
                                     for (i = 0; i < parsedDataString[7].length; i=i+2) {
@@ -326,14 +322,40 @@
         function showHideControls(){
           var selectedDataModel = document.getElementById("dataModel").value;
           switch(selectedDataModel){
-            case "f":
+            case "c": // choose
+            document.getElementById("sunSpecPanelContainer").style.visibility="hidden";
+            document.getElementById("modbusPanelContainer").style.visibility="hidden";
+            document.getElementById("fleetlinkPanelContainer").style.visibility="hidden";
+            break;
+            case "s": // sunspec
+            document.getElementById("sunSpecPanelContainer").style.visibility="visible";
+            document.getElementById("modbusPanelContainer").style.visibility="hidden";
+            document.getElementById("fleetlinkPanelContainer").style.visibility="hidden";
+            break;
+            case "m": // modbus
+            document.getElementById("sunSpecPanelContainer").style.visibility="hidden";
+            document.getElementById("modbusPanelContainer").style.visibility="visible";
+            document.getElementById("fleetlinkPanelContainer").style.visibility="hidden";
+            break;
+            case "f": // fleetlink
+            document.getElementById("sunSpecPanelContainer").style.visibility="hidden";
             document.getElementById("modbusPanelContainer").style.visibility="hidden";
             document.getElementById("fleetlinkPanelContainer").style.visibility="visible";
             break;
-            case "m":
-            document.getElementById("modbusPanelContainer").style.visibility="visible";
-            document.getElementById("fleetlinkPanelContainer").style.visibility="hidden";
-
-            break;
           }
         }
+
+        function startAutoFillSunSpec(){
+          console.log("Autofill started...");
+        }
+
+        function mapUnit(){
+          console.log("mapping unit...");
+          buildInterestPacket();
+          drawMarker(targetUnitKey);
+        }
+
+        $( document ).ready(function() {
+            console.log( "Initializing..." );
+            initializeMap();
+            });
