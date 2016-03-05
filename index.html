@@ -8,7 +8,7 @@
 
 
   <link rel="stylesheet" href="http://code.jquery.com/mobile/1.4.5/jquery.mobile-1.4.5.min.css" />
-  <link rel="stylesheet" href="css/styleMobile.css" type="text/css"></link>
+  <link rel="stylesheet" href="css/styleOOP.css" type="text/css"></link>
 
   <script src="http://code.jquery.com/jquery-1.11.1.min.js"></script>
 
@@ -24,7 +24,7 @@
   <script src="http://code.jquery.com/mobile/1.4.5/jquery.mobile-1.4.5.min.js"></script>
   <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
   <script src="http://maps.google.com/maps/api/js"></script>
-  <script src="js/applicationMobile.js"></script>
+  <script src="js/applicationOOP.js"></script>
 	<script src="http://ajax.googleapis.com/ajax/libs/jquery/1/jquery.min.js"></script>
 
 
@@ -83,8 +83,8 @@
 														LOCATE ON MAP
 														</button>
 
-														<button id="sendInterestPacket"
-														onclick= "sendInterestPacket()"
+														<button id="expressInterestPacket"
+														onclick= "expressInterestPacket()"
 														textalign= "center"  style="float:left; width:65%;  margin-left: 0%;  margin-top:5%; border: 1px solid gray; background:#4F594C">
 														GO
 														</button>
@@ -155,7 +155,7 @@
 		          <div class="dataPanelLabel" >
 		            <label id="dataModelLabel" ></label>
 		            <select id="dataModel" style="font-size:1.4em;" onchange="if(this.selectedIndex) showHideControls();" >
-		            <option value="x" disabled="disabled" ></option>
+		            <option value="x" selected="selected" disabled="disabled" ></option>
 								<option value="c">Choose...</option>
 								<option value="s">SunSpec</option>
 		            <option value="m">Modbus</option>
@@ -231,7 +231,7 @@
 
 		          <div class="dataPanelLabel">
 		            <label id="modbusRegisterLabel" >Modbus Register</label>
-		            <input type="text"  id='modbusRegister' value= '50004 'style="border: 1px solid darkgray"></input>
+		            <input type="text"  id='modbusRegister' value= '50004' style="border: 1px solid darkgray"></input>
 		          </div>
 
 		          <div class="dataPanelLabel">
