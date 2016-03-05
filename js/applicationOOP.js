@@ -33,8 +33,8 @@
                   }  ,
               3: {
                       'serialNumber': 'Unit3',
-                      'macAddress': '690a2c16',
-                      'agentURL': '/mBJPRzig9S8d',
+                      'macAddress': '6908cd7e',
+                      'agentURL': '/LdRa4cy-o9XA',
                       'onlineStatus': false,
                       'position' : {
                           'latitude': '38.490',
@@ -65,8 +65,8 @@
 
         var interestPacket = {
               'type': "i/",
-              'name' : "",
-              'nonce' : "",
+              'name' : [null,null,null,null,null,null,null,null,null,null,],
+              'nonce' : "54"
               }
 
         function buildInterestPacket() {
@@ -88,7 +88,7 @@
           switch (document.getElementById("dataModel").value) {
 
             case "c":
-                interestPacket.name + "/"  ;
+
             break;
 
             case "s":
@@ -108,12 +108,13 @@
             break;
 
             case "m":
-                interestPacket.name =  "m/" + //  a native modbus command
-                fleetLink[targetUnitKey].macAddress   + "/" +
-                document.getElementById("modbusID").value + "/"  +
-                document.getElementById("modbusFC").value + "/"  +
-                document.getElementById("modbusRegister").value + "/"  +
-                document.getElementById("modbusSize").value + "/"  ;
+                interestPacket.name[0] =  "m";  //  a native modbus command
+                interestPacket.name[1] = fleetLink[targetUnitKey].macAddress  ;
+                interestPacket.name[2] = document.getElementById("modbusID").value ;
+                interestPacket.name[3] = document.getElementById("modbusFC").value ;
+                interestPacket.name[4] = document.getElementById("modbusRegister").value ;
+                interestPacket.name[5] = document.getElementById("modbusSize").value  ;
+                console.log("created interest packet = " + interestPacket.name);
             break;
 
             case "f":
@@ -129,9 +130,9 @@
           }
 
 
-        function sendInterestPacket() {
+        function expressInterestPacket() {
           // disable the Go button
-          document.getElementById("sendInterestPacket").disabled = "disabled";
+          document.getElementById("expressInterestPacket").disabled = "disabled";
           // play a swoosh
           new Audio("img/swoosh.mp3").play();
 
@@ -140,20 +141,21 @@
           document.getElementById("decimalDataValue").textContent = "--";
           document.getElementById("stringDataRepresentation").textContent = "--";
             buildInterestPacket();
-            interestPacketToBeSent = interestPacket.type + interestPacket.name ;
+          //  interestPacketToBeSent = interestPacket.type + interestPacket.name ;
 
-          //  console.log("sendingInterestPacket to " + fleetLink[accessUnitKey].serialNumber + "-> " +  interestPacketToBeSent);
-
+            console.log("expressing Interest Packet to " + fleetLink[accessUnitKey].serialNumber + "-> " );
                  $.ajax({
                    // send the interest packet to the selected agent and expect a data packet in response
-                     url: baseURL + fleetLink[accessUnitKey].agentURL + '/sendInterest',
+                     url: baseURL + fleetLink[accessUnitKey].agentURL + '/expressInterest',
                      //timeout: 20000,
+                     data: JSON.stringify(interestPacket),
                      type: 'POST',
                      // convert interest packet string to JSON
-                     data: JSON.stringify({ 'interestPacketString' : interestPacketToBeSent }),
+
                      success : function(response) {
-                         document.getElementById("sendInterestPacket").disabled = false;
-                          if ('dataPacket' in response) {
+                         document.getElementById("expressInterestPacket").disabled = false;
+                         console.log(response);
+                           if ('dataPacket' in response) {
                               // display in raw data packet form
                               document.getElementById("returnedDataPacket").textContent = response.dataPacket;
                               // parse our returned data in hexadecimal form
@@ -186,12 +188,13 @@
                                 break;
 
                                 }
+
                                 // sound chime to indicate successful data packet reception
                                     new Audio("img/smallBell2.wav").play();
                             }
                           },
                      error : function(jqXHR, textStatus, err) {
-                         document.getElementById("sendInterestPacket").disabled = false;
+                         document.getElementById("expressInterestPacket").disabled = false;
                          var errorResponse = jqXHR.status + ' ' + textStatus + ': ' + err + ' - ' + jqXHR.responseText;
                          document.getElementById("returnedDataPacket").textContent = errorResponse;
                      }
@@ -320,6 +323,7 @@
 
 
         function showHideControls(){
+          console.log("executing show hide");
           var selectedDataModel = document.getElementById("dataModel").value;
           switch(selectedDataModel){
             case "c": // choose

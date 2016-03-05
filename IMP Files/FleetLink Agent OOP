@@ -1,0 +1,264 @@
+/// OOP version of FleetLink agent code
+// Randy King 3/2/16
+// There are fundamental classes for Data and Interests
+// var interestPacket = {
+//              'type': "i/",
+//              'name' : [null,null,null,null,null,null,null,null,null,null,],
+//              'nonce' : "54"
+//              }
+// but they have methods to express (or build) them as either plain text strings or
+// JSON-encoded strings of the underlying table depending on the need of the transport protocol
+// JSON is easier to parse for the name components
+// HTTP POST works best with a plain string
+// the agent device comms works well with a JSON object
+// Serial comms to Modbus or LoRa has to be strings
+
+//////////////////////  ROCKY SETUP  //////////////////////////
+
+#require "Rocky.class.nut:1.1.1"
+rockySettings <- {
+    timeout = 15
+};
+
+app <- Rocky(rockySettings);
+
+
+
+class FleetLink {
+
+    settings = {position = {latitude = 38, longitude = -122}, macAddress = null, deviceOnline = null}
+
+    function saveSettingsToServer() {
+        local err = server.save(settings);
+            if (err == 0) {
+                //server.log("New settings saved to server ");
+            }   else {
+                server.log("ERROR: Settings not saved to server. Error code: " + err.tostring());
+            }
+    }
+
+    function loadSettingsFromServer() {
+         local tempStorage = server.load() ;
+         // if the stored settings have the same number of slots as the current settings, use them
+            if (tempStorage.len() == settings.len()) {
+                settings = tempStorage;
+                //server.log("Settings loaded from server ");
+            } else {
+                server.log("ERROR: No settings available from server");
+            }
+    }
+
+}
+
+
+
+class Data {
+
+    static type = "d"
+    name = array(10, null)
+    storedContext = null // store HTTP context to return things on app request
+
+    function fromString (dataStringInput) {
+        local subStrings = split(dataStringInput, "/");
+        for(local i = 0; i < subStrings.len()-1; i++) {
+        name[i] = subStrings[i+1]; // don't add the type component to the name, so +1
+        }
+    }
+
+    function fromJSON (dataJSONInput) {
+        local dataTable = http.jsondecode(dataJSONInput);
+        name = dataTable.name;
+        }
+
+
+    function toString () {
+        local dataString = type + "/";
+        for (local i = 0; i < 10; i++) {
+            if(name[i] != null) {
+                dataString += name[i] + "/";
+            }
+        }
+        return dataString
+    }
+
+    function toJSON () {
+        local dataJSON =http.jsonencode({ "type": type, "name": name });
+        return dataJSON
+    }
+}
+
+
+
+class Interest {
+
+    static type = "i"
+    name = array(10, null)
+    nonce = null
+    storedContext = null      // may need to store HTTP context to return things on app request
+
+
+    function fromString (interestStringInput) {
+        local subStrings = split(interestStringInput, "/")
+        for(local i = 0; i < subStrings.len()-1; i++) {
+            name[i] = subStrings[i+1]; // don't add the type component to the name, so +1
+        }
+        nonce = irand(999);
+    }
+
+    function fromJSON (interestJSONInput) {
+        local interestTable = http.jsondecode(interestJSONInput);
+        name = interestTable.name;
+        nonce = irand(999);
+    }
+
+
+    function toString () {
+        local interestString = type + "/";
+        for (local i = 0; i < 10; i++) {
+            if(name[i] != null) {
+                interestString += name[i] + "/";
+            }
+        }
+        return interestString
+    }
+
+
+    function toJSON () {
+        local interestJSON =http.jsonencode({ "type": type, "name": name, "nonce": nonce  }); //
+        return interestJSON
+    }
+}
+
+
+
+class Face {
+
+    pendingInterestTable = array(10, null) // 10 PIT entries should be more than enough..really only need 1 here, I think
+    nextEntryId = 0
+
+    //Interest handler
+    function expressInterest(transportInput, interestInput){
+         // store this in the pending interest table
+        this.pendingInterestTable[nextEntryId] = interestInput ;
+        send(transportInput, interestInput);
+
+        // don't overfill the PIT; recyle pointer
+        if (nextEntryId < pendingInterestTable.len()-1) {
+            nextEntryId++;
+
+        } else {
+            nextEntryId = 0; // start again at 0 if you've filled up the PIT
+        }
+
+    }
+
+    //Data handler
+    function processDataObject(transportInput, dataObjectInput) {
+        local matchingEntryIndex = findMatchingPIT(dataObjectInput);
+        if (matchingEntryIndex != null) {
+            //server.log ("matched data and PIT at index = " + matchingEntryIndex)
+            dataObjectInput.storedContext = pendingInterestTable[matchingEntryIndex].storedContext ;// get the POST context for the matching interest
+            send(transportInput, dataObjectInput);
+            this.pendingInterestTable[matchingEntryIndex] = null ; //clear the matching PIT entry
+        } else {
+            server.log ("no matching PIT entry found for data");
+        }
+
+    }
+
+    //Transport function sends objects as requested; format is implicit in transport choice
+    function send(transportChoice, objectToSend) {
+        server.log("transport is sending to " + transportChoice + " with content " + objectToSend.toString());
+        switch (transportChoice) {
+            case "device":
+                device.send("/agentToDevice", objectToSend.toString());  //send the string version of the Interest to the device
+            break
+            case "app":
+                objectToSend.storedContext.send(200, { dataPacket = objectToSend.toString() });     // send the received data to the saved context
+            break
+            default:
+                server.log("error: unrecognized transport");
+        }
+    }
+
+    function findMatchingPIT (dataObjectInput){
+        local matchingPITIndex = null;
+        for (local i=0; i<pendingInterestTable.len(); i++) {  // look through every interest object in the PIT
+            // set a boolean flag that the string match
+            local matchFlag = true;
+            if (pendingInterestTable[i] != null){ // can't check null entries
+                 // check if the Names have the same number of components, if not they are  not equal
+                 if (pendingInterestTable[i].name.len() != dataObjectInput.name.len()) {
+                     matchFlag = false;
+                 } else {
+                    // if they ARE the same lenght, compare each name component
+                    for (local j=0; j<10; j++) {
+                        // for any non null name component of the PIT, check is the data name component matches
+                        // the data likely has more components since I included the data content as part of the name
+                        if (pendingInterestTable[i].name[j] != null) {
+                            if (pendingInterestTable[i].name[j] != dataObjectInput.name[j]) {
+                                     matchFlag = false; // if any of the name components don't match, clear the flag
+                            }
+                        }
+                        //server.log("checking name component " + j + " with values " + pendingInterestTable[i].name[j] + " and " + dataObjectInput.name[j]);
+                    }
+                 }
+
+                if (matchFlag == true) {
+                    matchingPITIndex = i;
+                } else {
+                    server.log("no matching PIT found");
+                }
+            }
+         }
+    return matchingPITIndex // send back the index of the matching PIT entry
+    }
+}
+
+
+
+
+// INSTANTIATE OBJECTS AT RUN TIME
+
+    local oneFleetLink = FleetLink(); // instantiate this FleetLink object
+    oneFleetLink.loadSettingsFromServer(); // load it from server
+    local mainFace = Face();
+
+
+
+// APP HANDLERS
+
+    app.post("/expressInterest", function(context) {
+        // create an interest
+        local appPostInterest = Interest();
+        appPostInterest.fromJSON(context.req.body);
+        appPostInterest.storedContext = context
+        // and send the interest to device..have to call this from main body of program or I lose scope
+        mainFace.expressInterest("device", appPostInterest);
+    });
+
+
+    function processDeviceString(deviceStringInput){
+        // create an interest
+        local deviceDataObject = Data();
+        deviceDataObject.fromString(deviceStringInput);
+
+        // and send the data back to app..have to call this from main body of program or I lose scope
+        mainFace.processDataObject("app", deviceDataObject);
+    }
+
+
+
+/// REGISTER DEVICE EVENTS
+    device.onconnect(function() {oneFleetLink.settings.deviceOnline = true;});
+    device.ondisconnect(function() {oneFleetLink.settings.deviceOnline = false; });
+    device.on("deviceToAgent", processDeviceString); // handle the reception of a data packet from the device
+
+
+
+// HELPER FUNCTIONS
+function irand(max) {
+    // Generate a pseudo-random integer between 0 and max
+    local roll = (1.0 * math.rand() / RAND_MAX) * (max + 1);
+    return roll.tointeger();
+}

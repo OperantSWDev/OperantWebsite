@@ -1,4 +1,4 @@
-/// AJAX FleetLink Provisioning  - agent code
+// AJAX FleetLink Provisioning  - agent code
 
 
 
@@ -16,7 +16,7 @@ app <- Rocky(rockySettings);
 
 
 //////////////////////  GLOBAL VARIABLES  //////////////////////////
-// This is used to defer HTP responses as per
+// This is used to defer HTTP responses as per
 //https://electricimp.com/docs/resources/interactive/
 savedRequestContext <- null;
 settingsStorage <- {} ; // Global table containing device and agent settings

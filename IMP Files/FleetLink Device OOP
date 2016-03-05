@@ -1,5 +1,17 @@
-/// AJAX FleetLink Provisioning  - device code
-
+// OOP version of FleetLink DEVICE code
+// Randy King 3/2/16
+// There are fundamental classes for Data and Interests
+// var interestPacket = {
+//              'type': "i/",
+//              'name' : [null,null,null,null,null,null,null,null,null,null,],
+//              'nonce' : "54"
+//              }
+// but they have methods to express (or build) them as either plain text strings or
+// JSON-encoded strings of the underlying table depending on the need of the transport protocol
+// JSON is easier to parse for the name components
+// HTTP POST works best with a plain string
+// the agent device comms works well with a JSON object
+// Serial comms to Modbus or LoRa has to be strings
 ///////////////////  GLOBAL VARIABLES  //////////////////////
 
 local parsedInterestString = []; // An array to put the broken apart interest string into
@@ -26,7 +38,7 @@ function disconnectionHandler(reason) {
         // Attempt to reconnect in 10 minutes' time
         imp.wakeup(300, reconnect);
     } else {
-        server.log("Device reconncted");
+        //server.log("Device reconnected");
     }
 }
 
@@ -66,8 +78,8 @@ function formBaseDataPacketString(interestPacket) {
         interestPacket[3] + "/" +
         interestPacket[4] + "/" +
         interestPacket[5] + "/" + // for test of shorter packet"
-        // "x/" +
-        interestPacket[6] + "/";
+        interestPacket[6] + "/" ;
+        //server.log("base data string to return is " + dataString)
         return dataString;
 }
 
@@ -75,53 +87,61 @@ function formBaseDataPacketString(interestPacket) {
 
 function agentPacketHandler(packetString) {
     local sourceFace = "agent";
-    // server.log("packet received from agent = " + packetString);
+    //server.log("packet received from agent = " + packetString);
     packetHandler(packetString, sourceFace);
 
 }
 
 
 
+//////////////////////// AGENT LISTENER  /////////////////////
+
+ agent.on("/agentToDevice", agentPacketHandler);
+
+
+/////////////////////////  RUNTIME  //////////////////////
+
+
 function packetHandler(packetString, sourceFace) {
     // function called from any face, any packet type to initiate processing
     local dataPacketString = ""; // this is what we'll return for most cases
     // first parse packet into components
-    server.log("packet handler received: " + packetString);
+    //server.log("packet handler received: " + packetString);
     local parsedPacketString = split(packetString, "/");
 
     switch(parsedPacketString[0]) {
         case "i":
-            server.log("interest packet detected from face = " + sourceFace);
+            //server.log("interest packet detected from face = " + sourceFace);
             switch (parsedPacketString[1]) { // Which data model?
                 case "m": // a local modbus command  can be answered with a modbus query, otherwise broadacst via LoRa
                 // Figure out if interest packet is addressed to this IMP
                         local macAddressString = imp.getmacaddress().slice(4,12);
-                        server.log("MAC address = " + macAddressString)
+                        //server.log("MAC address = " + macAddressString)
                         if (parsedPacketString[2] == macAddressString) { // have to ignore the first 4 bytes of MAC because of string length constraint..grrr
-                                server.log("interest packet is mine");
-                            server.log("local modbus command detected");
+                                //server.log("interest packet is mine");
+                            //server.log("local modbus command detected");
                             local hexModbusCommand = formModbusCommand(parsedPacketString);
-                            server.log("modbus command ready: " + hexModbusCommand);
+                            //server.log("modbus command ready: " + hexModbusCommand);
                             // Write the formed Modbus string out
                             writeModbus(hexModbusCommand);
-                            server.log("modbus write complete: ");
+                            //server.log("modbus write complete: ");
                             //now read the modbus until something is completely received or timeout occurs
                              local modbusReturn = readModbus();
-                                server.log("THE processor received modbus reply of " + modbusReturn + " of length = " + modbusReturn.len());
+                                //server.log("THE processor received modbus reply of " + modbusReturn + " of length = " + modbusReturn.len());
                                 // need to make sure we got enough data bytes back from modbus to satisfy request
                                 local numberModbusBytesRequested = 4 * parsedPacketString[6].tointeger();// 2 bytes per 16 bit register + 4 bytes in address
-                                server.log("requested number of data bytes was: " + numberModbusBytesRequested);
+                                //server.log("requested number of data bytes was: " + numberModbusBytesRequested);
                                 if (modbusReturn.len() >= numberModbusBytesRequested ) {
                                     local cleanedModbusReturn = modbusReturn.slice(4, 4 + numberModbusBytesRequested); // strip off the unneeded 4 bytes
                                     dataPacketString = formBaseDataPacketString(parsedPacketString) + cleanedModbusReturn;
                                 } else {
                                     dataPacketString = formBaseDataPacketString(parsedPacketString) + "4D4F44425553204E41"; // send "No Modbus Reply" if not as long as expected or empty
                                 }
-                                server.log("processor formed data packet string of " + dataPacketString + " and length " + dataPacketString.len());
+                                //server.log("processor formed data packet string of " + dataPacketString + " and length " + dataPacketString.len());
                                 switch (sourceFace) {
                                     case "agent":
-                                    server.log("and will return to agent" + dataPacketString);
-                                    agent.send("dataPacket", dataPacketString);
+                                    server.log("device formed data and will return to agent " + dataPacketString + " of length " + dataPacketString.len());
+                                    agent.send("deviceToAgent", dataPacketString);
                                     break
                                     case "loRa":
                                     loRaDriver.flush(); // wait until write done
@@ -131,35 +151,35 @@ function packetHandler(packetString, sourceFace) {
                                             server.log("and was re-broadcast via LoRa");
                                     break
                                     default:
-                                    server.log("unknown source face sent interest packet");
+                                    //server.log("unknown source face sent interest packet");
                                 }
                         } else {
                                 // If the interest packet is addressed to a different MAC address, send it out through the LoRa
-                                server.log("interest packet is NOT mine: " + packetString);
+                                //server.log("interest packet is NOT mine: " + packetString);
                                 switch (sourceFace) {
                                     case "agent":
                                     loRaDriver.flush(); // wait until write done
                                     loRaDriver.write(packetString + newlineChar.tochar());
                                     loRaDriver.flush(); // wait until write done
-                                    server.log("...sent by agent; broadcast via LoRa");
+                                    //server.log("...sent by agent; broadcast via LoRa");
                                     break
                                     case "loRa":
-                                    server.log("...sent by LoRa; forwarding interest packets not implemented");
+                                    //server.log("...sent by LoRa; forwarding interest packets not implemented");
                                     break
                                     default:
-                                    server.log("...sent by " + sourceFace "; packet ignored");
+                                 //   server.log("...sent by " + sourceFace "; packet ignored");
                                 }
             }
                 break
                 case "f":
-                    server.log("fleetlink data model interest packets end up here")
+                    //server.log("fleetlink data model interest packets end up here")
                         loRaDriver.flush(); // wait until write done
                         //loRaDriver.write(packetString + newlineChar.tochar());
                         loRaDriver.flush(); // wait until write done
-                        server.log("range interest packet broadcast via LoRa");
+                        //server.log("range interest packet broadcast via LoRa");
                 break
                 default:
-                    server.log("Error: Data model not implemented");
+                    //server.log("Error: Data model not implemented");
                 }
 
 
@@ -167,30 +187,17 @@ function packetHandler(packetString, sourceFace) {
         case "d": // data packets
             switch (sourceFace) {
                     case "loRa":
-                       agent.send("dataPacket", packetString); // everything from LoRa goes up to agent
+                       agent.send("deviceToAgent", packetString); // everything from LoRa goes up to agent
                     break
                     default:
-                    server.log("unknown source face sent this data packet " + sourceFace);
+                    //server.log("unknown source face sent this data packet " + sourceFace);
                 }
         break
         default:
-            server.log("Failure to parse string = " + parsedPacketString[0]);
+            //server.log("Failure to parse string = " + parsedPacketString[0]);
     }
 
 }
-
-
-
-//////////////////////// AGENT LISTENER  /////////////////////
-
- agent.on("interest", agentPacketHandler);
-
-
-/////////////////////////  RUNTIME  //////////////////////
-
-
-
-
 
 
 
@@ -320,6 +327,7 @@ function loRaDataAvailable() {  // called when serial data arrives from LoRa
 
     loRaDriver <- hardware.uart57; // alias the LoRa serial port
     loRaDriver.configure(9600, 8, PARITY_NONE, 1, NO_CTSRTS, loRaDataAvailable ); // configure UART to callback when serial data arrives from LoRa radio
+
 
 
 
