@@ -362,4 +362,7 @@
         $( document ).ready(function() {
             console.log( "Initializing..." );
             initializeMap();
+            document.getElementById("dataModel").value = "m" ; // default to Modbus data model
+            showHideControls();
+
             });

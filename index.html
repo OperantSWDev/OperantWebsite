@@ -72,12 +72,14 @@
 														</select>
 
 														<button id="autoFillSunSpec"
+														disabled = disabled
 														onclick= "startAutoFillSunSpec()"
 													 	textalign= "center"  style="float:left; width:65%;  margin-left: 0%;  margin-top:5%; border: 1px solid gray; background:#4C3842">
 														AUTOFILL SUNSPEC
 														</button>
 
 														<button id="mapUnit"
+														disabled = disabled
 														onclick= "mapUnit()"
 													 	textalign= "center"  style="float:left; width:65%;  margin-left: 0%;  margin-top:5%; border: 1px solid gray; background:#4A4E59">
 														LOCATE ON MAP
@@ -155,11 +157,11 @@
 		          <div class="dataPanelLabel" >
 		            <label id="dataModelLabel" ></label>
 		            <select id="dataModel" style="font-size:1.4em;" onchange="if(this.selectedIndex) showHideControls();" >
-		            <option value="x" selected="selected" disabled="disabled" ></option>
-								<option value="c">Choose...</option>
-								<option value="s">SunSpec</option>
-		            <option value="m">Modbus</option>
-		            <option value="f">Service</option>
+		            <option value="x"  disabled="disabled" ></option>
+								<option value="c" disabled="disabled">Choose...</option>
+								<option value="s" disabled="disabled">SunSpec</option>
+		            <option value="m" selected="selected">Modbus</option>
+		            <option value="f" disabled="disabled">Service</option>
 		            </select>
 		          </div>
 
