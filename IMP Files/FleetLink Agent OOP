@@ -1,264 +1,288 @@
-/// OOP version of FleetLink agent code
+// OOP version of FleetLink agent code
 // Randy King 3/2/16
-// There are fundamental classes for Data and Interests
-// var interestPacket = {
-//              'type': "i/",
-//              'name' : [null,null,null,null,null,null,null,null,null,null,],
-//              'nonce' : "54"
-//              }
-// but they have methods to express (or build) them as either plain text strings or
-// JSON-encoded strings of the underlying table depending on the need of the transport protocol
-// JSON is easier to parse for the name components
-// HTTP POST works best with a plain string
-// the agent device comms works well with a JSON object
-// Serial comms to Modbus or LoRa has to be strings
-
-//////////////////////  ROCKY SETUP  //////////////////////////
-
-#require "Rocky.class.nut:1.1.1"
-rockySettings <- {
-    timeout = 15
-};
-
-app <- Rocky(rockySettings);
 
 
+//////////////////////  ROCKY WEB HANDLER SETUP  //////////////////////////////
 
-class FleetLink {
+    #require "Rocky.class.nut:1.1.1"
 
-    settings = {position = {latitude = 38, longitude = -122}, macAddress = null, deviceOnline = null}
+    rockySettings <- {
+        timeout = 20
+    };
 
-    function saveSettingsToServer() {
-        local err = server.save(settings);
-            if (err == 0) {
-                //server.log("New settings saved to server ");
-            }   else {
-                server.log("ERROR: Settings not saved to server. Error code: " + err.tostring());
-            }
+    app <- Rocky(rockySettings);
+
+
+class Interest {
+
+    static lifetime = 20 // global lifetime of interests in seconds
+    static type = "i"
+    name = array(10, null) // up to 10 name components
+    nonce = null // random number to identify interest unambiguously
+    trace = null // in a wireless network we have to track who sent the interest within the interest itself
+
+    function fromTable (iTable) {
+        name = iTable.name
+        nonce = iTable.nonce
+        trace = iTable.trace
     }
 
-    function loadSettingsFromServer() {
-         local tempStorage = server.load() ;
-         // if the stored settings have the same number of slots as the current settings, use them
-            if (tempStorage.len() == settings.len()) {
-                settings = tempStorage;
-                //server.log("Settings loaded from server ");
-            } else {
-                server.log("ERROR: No settings available from server");
-            }
+    function toTable () {
+        local iTable = { "name": name, "nonce": nonce, "trace": trace} //
+        return iTable
     }
 
+    function toString () {
+        local iString = type + "/"
+        for (local i=0; i<name.len(); i++) {
+            if (name[i] != null) {
+                iString += name[i]
+                iString += "/"
+            }
+        }
+        iString += nonce + "/"
+        iString += trace
+        return iString
+    }
+
+    function toModbusCommand(iInterest) {
+        // Form a valid Modbus query to write to local equipment
+        local hexModbusID = hexConvert(iInterest.name[2].tointeger(), 1);
+        local hexModbusFC = hexConvert(iInterest.name[3].tointeger(), 1);
+        local hexModbusRegister = hexConvert(iInterest.name[4].tointeger(), 2);
+        local hexModbusNumberRegisters = hexConvert(iInterest.name[5].tointeger(), 2);
+        local modbusCommandString = hexModbusID + hexModbusFC + hexModbusRegister + hexModbusNumberRegisters;
+        //server.log("modbus command formed: " + modbusCommandString);
+        return modbusCommandString
+    }
 }
 
+
+class AgentFace {
+
+    pendingInterestTable = array(10, {"interest" : null, "interface" : null, "httpContext" : null, "timer" : null , "satisfied": null} )
+    nextEntryId = 0 // pointer to next place to put a PIT entry
+
+    function addToPIT(sourceFace, httpContext, aInterest) {
+        this.pendingInterestTable[nextEntryId] = {"interest" : aInterest, "interface" : sourceFace, "httpContext" : httpContext, "timer" : time() + aInterest.lifetime}         // store this in the pending interest table
+        /*
+        server.log(" PIT interest.name[1]= " +  pendingInterestTable[nextEntryId].interest.name[1] )
+        server.log(" PIT interface= " +  pendingInterestTable[nextEntryId].interface )
+        server.log(" PIT httpContext= " +  pendingInterestTable[nextEntryId].httpContext )
+        server.log(" PIT timer= " +  pendingInterestTable[nextEntryId].timer )
+        */
+        // don't overfill the PIT; recycle pointer at end
+        if (nextEntryId < pendingInterestTable.len()-1) {
+            nextEntryId++;
+            //server.log("incrementing nextEntryId to " + nextEntryId)
+        } else {
+            nextEntryId = 0; // start again at 0 if you've filled up the PIT
+        }
+    }
+
+    function cleanPIT(entryId){
+        // clears the specific entry
+        if (entryId != null) {
+            pendingInterestTable[entryId].clear()
+        }
+        // and any expired timer entries as well
+        for (local i=0; i <pendingInterestTable.len(); i++) { //
+            if (pendingInterestTable[i].rawin("timer")) { // if there is a timer entry
+            //server.log("checking PIT[" + i + "]for expired entries..." );
+                if (pendingInterestTable[i].timer < time()) {
+                   // server.log("PIT[" + i + "] has an expired entry" );
+                    pendingInterestTable[i].clear()
+                }
+            }
+        }
+    }
+
+    function findMatchingPIT (dObject){
+        local matchingPITIndex = null
+        for (local i=0; i<pendingInterestTable.len(); i++) {  // look through every interest object in the PIT
+            local matchFlag = true   // set a boolean flag that the string match
+            if (pendingInterestTable[i].rawin("interest") ){ // can't check without a interest entry
+                // server.log("checking PIT Entry = " + i)
+                 if (pendingInterestTable[i].interest.name.len() != dObject.name.len()) { // check if the Names have the same number of components, if not they are  not equal
+                     matchFlag = false;
+                    // server.log("no PIT match because number of name components not equal")
+                 } else {  // if they ARE the same length, compare each name component
+                    for (local j=0; j<10; j++) {
+                       // if (pendingInterestTable[i].interest.name[j] != null) {
+                            if (pendingInterestTable[i].interest.name[j] != dObject.name[j]) {
+                                //server.log(pendingInterestTable[i].interest.name[j] + " equals? " +dObject.name[j])
+                                    //server.log("match failed at name " + j)
+                                     matchFlag = false // if any of the name components don't match, clear the flag
+                        //    }
+                        }
+                         //server.log("checking name component " + j + " with values " + pendingInterestTable[i].interest.name[j] + " and " + dObject.name[j]);
+                    }
+
+                    // server.log("checking PIT entry nonce " + pendingInterestTable[i].interest.nonce + " equals object nonce " + dObject.nonce)
+                    if (pendingInterestTable[i].interest.nonce.tostring() != dObject.nonce.tostring()) {  // the nonces must match as well, seems like one was an integer?
+                       //server.log("match failed at nonce")
+                        matchFlag = false
+                    }
+                 }
+                if (matchFlag == true) {
+                    matchingPITIndex = i
+                } else {
+                    matchingPITIndex = null
+                 //   server.log("no matching PIT found")
+                }
+            }
+         }
+    return matchingPITIndex // send back the index of the matching PIT entry
+    }
+
+
+    function send(transportChoice,  iContext, itemToSend,) {
+        //Transport function sends objects as requested; format is implicit in transport choice
+        switch (transportChoice) {
+            case "device":
+                device.send("agentToDevice", itemToSend.toTable())  //send the table version of the item to the device
+            break
+            case "app":
+                iContext.send(200, { "returnData" : itemToSend });     // send the received data as a string to the saved context
+            break
+            default:
+                server.log("error: unrecognized transport");
+        }
+    }
+}
 
 
 class Data {
 
     static type = "d"
     name = array(10, null)
-    storedContext = null // store HTTP context to return things on app request
-
-    function fromString (dataStringInput) {
-        local subStrings = split(dataStringInput, "/");
-        for(local i = 0; i < subStrings.len()-1; i++) {
-        name[i] = subStrings[i+1]; // don't add the type component to the name, so +1
-        }
-    }
-
-    function fromJSON (dataJSONInput) {
-        local dataTable = http.jsondecode(dataJSONInput);
-        name = dataTable.name;
-        }
-
-
-    function toString () {
-        local dataString = type + "/";
-        for (local i = 0; i < 10; i++) {
-            if(name[i] != null) {
-                dataString += name[i] + "/";
-            }
-        }
-        return dataString
-    }
-
-    function toJSON () {
-        local dataJSON =http.jsonencode({ "type": type, "name": name });
-        return dataJSON
-    }
-}
-
-
-
-class Interest {
-
-    static type = "i"
-    name = array(10, null)
     nonce = null
-    storedContext = null      // may need to store HTTP context to return things on app request
+    contents = null
+    trace = null // in a wireless network we have to track who sent the interest within the interest itself
 
-
-    function fromString (interestStringInput) {
-        local subStrings = split(interestStringInput, "/")
-        for(local i = 0; i < subStrings.len()-1; i++) {
-            name[i] = subStrings[i+1]; // don't add the type component to the name, so +1
-        }
-        nonce = irand(999);
+    function fromTable (dTable) {
+        name = dTable.name
+        nonce = dTable.nonce
+        contents = dTable.contents
+        trace = dTable.trace
     }
 
-    function fromJSON (interestJSONInput) {
-        local interestTable = http.jsondecode(interestJSONInput);
-        name = interestTable.name;
-        nonce = irand(999);
+    function toTable () {
+        local dTable = { "name": name, "nonce": nonce, "contents": contents, "trace": trace} //
+        return dTable
     }
 
-
-    function toString () {
-        local interestString = type + "/";
-        for (local i = 0; i < 10; i++) {
-            if(name[i] != null) {
-                interestString += name[i] + "/";
+     function toString () {
+        local dString = type + "/"
+        for (local i=0; i<name.len(); i++) {
+            if (name[i] != null) {
+                dString += name[i]
+                dString += "/"
             }
         }
-        return interestString
+        dString += nonce + "/"
+        dString += contents + "/"
+        dString += trace
+        return dString
     }
 
-
-    function toJSON () {
-        local interestJSON =http.jsonencode({ "type": type, "name": name, "nonce": nonce  }); //
-        return interestJSON
+    function fromModbusResponse(dInterest, mString) {
+        //server.log("forming data object from " + mString)
+        name = dInterest.name
+        nonce = dInterest.nonce
+        contents = mString.slice(4, mString.len()-6)  // throw away first four and last six characters of modbus response
     }
 }
 
 
+class FleetLink {
 
-class Face {
+    settings = {position = {latitude = 38, longitude = -122}, serialNumber = "A", deviceOnline = null}
 
-    pendingInterestTable = array(10, null) // 10 PIT entries should be more than enough..really only need 1 here, I think
-    nextEntryId = 0
-
-    //Interest handler
-    function expressInterest(transportInput, interestInput){
-         // store this in the pending interest table
-        this.pendingInterestTable[nextEntryId] = interestInput ;
-        send(transportInput, interestInput);
-
-        // don't overfill the PIT; recyle pointer
-        if (nextEntryId < pendingInterestTable.len()-1) {
-            nextEntryId++;
-
-        } else {
-            nextEntryId = 0; // start again at 0 if you've filled up the PIT
-        }
-
-    }
-
-    //Data handler
-    function processDataObject(transportInput, dataObjectInput) {
-        local matchingEntryIndex = findMatchingPIT(dataObjectInput);
-        if (matchingEntryIndex != null) {
-            //server.log ("matched data and PIT at index = " + matchingEntryIndex)
-            dataObjectInput.storedContext = pendingInterestTable[matchingEntryIndex].storedContext ;// get the POST context for the matching interest
-            send(transportInput, dataObjectInput);
-            this.pendingInterestTable[matchingEntryIndex] = null ; //clear the matching PIT entry
-        } else {
-            server.log ("no matching PIT entry found for data");
-        }
-
-    }
-
-    //Transport function sends objects as requested; format is implicit in transport choice
-    function send(transportChoice, objectToSend) {
-        server.log("transport is sending to " + transportChoice + " with content " + objectToSend.toString());
-        switch (transportChoice) {
-            case "device":
-                device.send("/agentToDevice", objectToSend.toString());  //send the string version of the Interest to the device
-            break
-            case "app":
-                objectToSend.storedContext.send(200, { dataPacket = objectToSend.toString() });     // send the received data to the saved context
-            break
-            default:
-                server.log("error: unrecognized transport");
-        }
-    }
-
-    function findMatchingPIT (dataObjectInput){
-        local matchingPITIndex = null;
-        for (local i=0; i<pendingInterestTable.len(); i++) {  // look through every interest object in the PIT
-            // set a boolean flag that the string match
-            local matchFlag = true;
-            if (pendingInterestTable[i] != null){ // can't check null entries
-                 // check if the Names have the same number of components, if not they are  not equal
-                 if (pendingInterestTable[i].name.len() != dataObjectInput.name.len()) {
-                     matchFlag = false;
-                 } else {
-                    // if they ARE the same lenght, compare each name component
-                    for (local j=0; j<10; j++) {
-                        // for any non null name component of the PIT, check is the data name component matches
-                        // the data likely has more components since I included the data content as part of the name
-                        if (pendingInterestTable[i].name[j] != null) {
-                            if (pendingInterestTable[i].name[j] != dataObjectInput.name[j]) {
-                                     matchFlag = false; // if any of the name components don't match, clear the flag
-                            }
-                        }
-                        //server.log("checking name component " + j + " with values " + pendingInterestTable[i].name[j] + " and " + dataObjectInput.name[j]);
-                    }
-                 }
-
-                if (matchFlag == true) {
-                    matchingPITIndex = i;
-                } else {
-                    server.log("no matching PIT found");
-                }
+    function saveToServer() {
+        local err = server.save(settings);
+            if (err == 0) {
+                server.log("New settings saved to server ");
+            }   else {
+                server.log("ERROR: Settings not saved to server. Error code: " + err.tostring());
             }
-         }
-    return matchingPITIndex // send back the index of the matching PIT entry
     }
+
+    function loadFromServer() {
+        local tStorage = server.load() ;
+        // if the stored settings have the same number of slots as the current settings, use them
+        if (tStorage.len() == settings.len()) {
+            settings = tStorage;
+            //server.log("Settings loaded from server ");
+        } else {
+            server.log("ERROR: No settings available from server");
+        }
+    }
+
 }
 
 
 
 
-// INSTANTIATE OBJECTS AT RUN TIME
+////////////////////// INSTANTIATE AND LOAD THIS FLEETLINK  //////////////////////////
 
-    local oneFleetLink = FleetLink(); // instantiate this FleetLink object
-    oneFleetLink.loadSettingsFromServer(); // load it from server
-    local mainFace = Face();
+    local aFleetLink = FleetLink() // instantiate this FleetLink object
+
+    //aFleetLink.saveToServer() // save it to server
+    aFleetLink.loadFromServer() // load it from server
+
+    function sendSettingsToDevice(dummy) {
+        device.send("sendSettings", aFleetLink.settings)
+    }
+    device.on("requestSettings", sendSettingsToDevice); // when requested
+
+    device.onconnect(function() {aFleetLink.settings.deviceOnline = true;});
+    device.ondisconnect(function() {aFleetLink.settings.deviceOnline = false; });
 
 
+////////////////////// INSTANTIATE THE FACE  //////////////////////////
 
-// APP HANDLERS
+    local aFace = AgentFace()
+
+    function checkExpiredPIT() {
+        aFace.cleanPIT(null);        // only clear expired timers
+        imp.wakeup(5, checkExpiredPIT) ;   // remove expire interests from PIT
+    }
+
+     checkExpiredPIT(); // start PIT cleaner running
+
+
+//////////////////////  APP  HANDLER  ///////////////////////////////////
 
     app.post("/expressInterest", function(context) {
-        // create an interest
-        local appPostInterest = Interest();
-        appPostInterest.fromJSON(context.req.body);
-        appPostInterest.storedContext = context
-        // and send the interest to device..have to call this from main body of program or I lose scope
-        mainFace.expressInterest("device", appPostInterest);
+        // interests come from app as JSON encoded tables
+        local aInterest = Interest()
+        //server.log("interest received from app: " + context.req.body)
+        aInterest.fromTable(http.jsondecode(context.req.body))
+        // Place in the agent PIT, store the source interface and http contxt
+        aFace.addToPIT("app", context, aInterest)
+        // send it to the device
+        aFace.send("device", null, aInterest)
     });
 
 
-    function processDeviceString(deviceStringInput){
-        // create an interest
-        local deviceDataObject = Data();
-        deviceDataObject.fromString(deviceStringInput);
+//////////////////////  DEVICE HANDLER  ///////////////////////////////////
 
-        // and send the data back to app..have to call this from main body of program or I lose scope
-        mainFace.processDataObject("app", deviceDataObject);
+
+    function receiveDeviceData(dTable){
+        //server.log("agent received data packet " + dTable.contents)
+        local aData = Data();
+        aData.fromTable(dTable)
+
+        // check for PIT match
+        local matchingPITEntryId = aFace.findMatchingPIT(aData)
+        if (matchingPITEntryId != null) {
+            //server.log("Matching PIT Entry at ID " + matchingPITEntryId)
+            aFace.send("app", aFace.pendingInterestTable[matchingPITEntryId].httpContext , http.jsonencode(dTable))
+            aFace.cleanPIT(matchingPITEntryId) // remove the matching PIT entry
+        }
     }
 
+    device.on("deviceToAgent", receiveDeviceData); // handle the reception of a data packet from the device
 
-
-/// REGISTER DEVICE EVENTS
-    device.onconnect(function() {oneFleetLink.settings.deviceOnline = true;});
-    device.ondisconnect(function() {oneFleetLink.settings.deviceOnline = false; });
-    device.on("deviceToAgent", processDeviceString); // handle the reception of a data packet from the device
-
-
-
-// HELPER FUNCTIONS
-function irand(max) {
-    // Generate a pseudo-random integer between 0 and max
-    local roll = (1.0 * math.rand() / RAND_MAX) * (max + 1);
-    return roll.tointeger();
-}
+    device.on("agentToDevice", receiveDeviceData )

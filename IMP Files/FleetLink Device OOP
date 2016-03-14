@@ -1,391 +1,600 @@
-// OOP version of FleetLink DEVICE code
-// Randy King 3/2/16
-// There are fundamental classes for Data and Interests
-// var interestPacket = {
-//              'type': "i/",
-//              'name' : [null,null,null,null,null,null,null,null,null,null,],
-//              'nonce' : "54"
-//              }
-// but they have methods to express (or build) them as either plain text strings or
-// JSON-encoded strings of the underlying table depending on the need of the transport protocol
-// JSON is easier to parse for the name components
-// HTTP POST works best with a plain string
-// the agent device comms works well with a JSON object
-// Serial comms to Modbus or LoRa has to be strings
-///////////////////  GLOBAL VARIABLES  //////////////////////
+// OOP version of FleetLink device code
+// Randy King 3/5/16
 
-local parsedInterestString = []; // An array to put the broken apart interest string into
-local parsedDataString = []; // An array used to build the return data packet
-local interestString = ""; //keep the single string representation of the interest packet globally
-local dataString = ""; //keep the single string representation of the data packet globally
-local modbusDataClean = ""; //  keep the data taht the modbus returns
-local rangeTimerReference = null;
 
-local newlineChar = 10;
-local emptyChar = 0;
-local messageFromLoRa = "" ;
+class FleetLink {
 
-////////////////////////  FUNCTIONS  ///////////////////////
+    settings = {position = {latitude = null, longitude = null}, serialNumber = null, deviceOnline = null}
+}
 
-//////////Following needed to define whats happens when Imp disconnects from WiFI
-// Set the disconnection policy
 
-server.setsendtimeoutpolicy(RETURN_ON_ERROR, WAIT_TIL_SENT, 30);
+class Interest {
 
-// Define the disconnection handler function
-function disconnectionHandler(reason) {
-    if (reason != SERVER_CONNECTED) {
-        // Attempt to reconnect in 10 minutes' time
-        imp.wakeup(300, reconnect);
-    } else {
-        //server.log("Device reconnected");
+
+    static type = "i"
+    name = array(10, null) // up to 10 name components
+    nonce = null // random number to identify interest unambiguously
+    trace = null // in a wireless network we have to track who sent the interest within the interest itself
+
+    static lifetime = 15 // global lifetime of interests in seconds
+
+    function fromTable (iTable) {
+        name = iTable.name
+        nonce = iTable.nonce
+        trace = iTable.trace
     }
-}
 
-// Define the reconnection function
+    function toTable () {
+        local iTable = { "name": name, "nonce": nonce, "trace": trace} //
+        return iTable
+    }
 
-function reconnect() {
-    // Attempt to reconnect
-    // server.connect calls disconnectHandler() on success or failure
-    // with an appropriate reason parameter
-    server.connect(disconnectionHandler, 60);
-}
+    function toString () {
+        local iString = type + "/"
+        for (local i=0; i<name.len(); i++) {
+            if (name[i] != null) {
+                iString += name[i]
+                iString += "/"
+                //server.log(i + "interest name component=" + iString)
+            }
+        }
+        iString += nonce + "/"
+        iString += trace
+        return iString
+    }
 
-// Register the unexpected disconnect handler
-server.onunexpecteddisconnect(disconnectionHandler);
+    function fromString(iString) {
+        local sArray = split(iString, "/")
+        local numComponents = sArray.len()
+        for(local i = 0; i<name.len(); i++) {
+            name[i] = null // clear the name to start
+        }
+        if (sArray[0] == "i") {
+            //server.log("forming interest from string " + iString +  " with number of components " +numComponents)
+            for (local i = 0; i <  numComponents - 3; i++) {  // take the second through second from last components and make a name form them
+                name[i] = sArray[i+1]
+                //server.log("name[i] " + name[i] + " sArray[i+1] " +sArray[i+1])
+            }
+            nonce = sArray[numComponents - 2]
+            trace = sArray[numComponents -1]
 
+        } else {
+            server.log("this is not an interest string and can't be parsed")
+        }
+    }
 
-
-//////// General data processing functions///////////
-
-function formModbusCommand(parsedPacketString) {
+    function toModbusCommand(iInterest) {
         // Form a valid Modbus query to write to local equipment
-        local hexModbusID = hexConvert(parsedPacketString[3].tointeger(), 1);
-        local hexModbusFC = hexConvert(parsedPacketString[4].tointeger(), 1);
-        local hexModbusRegister = hexConvert(parsedPacketString[5].tointeger(), 2);
-        local hexModbusNumberRegisters = hexConvert(parsedPacketString[6].tointeger(), 2);
+        local hexModbusID = hexConvert(iInterest.name[2].tointeger(), 1);
+        local hexModbusFC = hexConvert(iInterest.name[3].tointeger(), 1);
+        local hexModbusRegister = hexConvert(iInterest.name[4].tointeger(), 2);
+        local hexModbusNumberRegisters = hexConvert(iInterest.name[5].tointeger(), 2);
         local modbusCommandString = hexModbusID + hexModbusFC + hexModbusRegister + hexModbusNumberRegisters;
         //server.log("modbus command formed: " + modbusCommandString);
         return modbusCommandString
+    }
 }
 
 
-function formBaseDataPacketString(interestPacket) {
-       // Form the base of data packet to reply with
-        local dataString = "d/" +
-        interestPacket[1] + "/" +
-        interestPacket[2] + "/" +
-        interestPacket[3] + "/" +
-        interestPacket[4] + "/" +
-        interestPacket[5] + "/" + // for test of shorter packet"
-        interestPacket[6] + "/" ;
-        //server.log("base data string to return is " + dataString)
-        return dataString;
-}
+class DeviceFace {
+
+    pendingInterestTable = array(10, {"interest" : null, "interface" : null, "httpContext" : null, "timer" : null , "satisfied": null} )
+    nextEntryId = 0 // pointer to next place to put a PIT entry
 
 
-
-function agentPacketHandler(packetString) {
-    local sourceFace = "agent";
-    //server.log("packet received from agent = " + packetString);
-    packetHandler(packetString, sourceFace);
-
-}
-
-
-
-//////////////////////// AGENT LISTENER  /////////////////////
-
- agent.on("/agentToDevice", agentPacketHandler);
+    function addToPIT(sourceFace, httpContext, aInterest) {
+        this.pendingInterestTable[nextEntryId] = {"interest" : aInterest, "interface" : sourceFace, "httpContext" : httpContext, "timer" : time() + aInterest.lifetime, "satisfied" : false}         // store this in the pending interest table
+        local thisEntryId = nextEntryId
+        if (nextEntryId < pendingInterestTable.len()-1) {
+            nextEntryId++;
+            //server.log("incrementing nextEntryId to " + nextEntryId)
+        } else {
+            nextEntryId = 0; // start again at 0 if you've filled up the PIT
+        }
+        return thisEntryId
+    }
 
 
-/////////////////////////  RUNTIME  //////////////////////
+    ////////////////////// INTEREST HANDLER  //////////////////////////
+
+    function processInterest(interface, iInterest, iFleetLink, iLoRa) {
+        if (findMatchingPIT(iInterest) != null) {
+            server.log("this is an existing Interest and processing will terminate")
+        } else {  // It's a new interest..here we go!
 
 
-function packetHandler(packetString, sourceFace) {
-    // function called from any face, any packet type to initiate processing
-    local dataPacketString = ""; // this is what we'll return for most cases
-    // first parse packet into components
-    //server.log("packet handler received: " + packetString);
-    local parsedPacketString = split(packetString, "/");
+            //////////////// DEVELOPMENT ONLY ///////////////////////////////////
+            // Units A and C should ignore direct communications, they must route through B
+                if ((iFleetLink.settings.serialNumber == "C" && iInterest.trace.slice(iInterest.trace.len()-1) == "A") ||
+                (iFleetLink.settings.serialNumber == "A" && iInterest.trace.slice(iInterest.trace.len()-1) == "C")) {
+                   server.log("Unit " + iFleetLink.settings.serialNumber + " is ignoring Unit " + iInterest.trace)
+                } else {
+            //////////////// DEVELOPMENT ONLY ///////////////////////////////////
 
-    switch(parsedPacketString[0]) {
-        case "i":
-            //server.log("interest packet detected from face = " + sourceFace);
-            switch (parsedPacketString[1]) { // Which data model?
-                case "m": // a local modbus command  can be answered with a modbus query, otherwise broadacst via LoRa
-                // Figure out if interest packet is addressed to this IMP
-                        local macAddressString = imp.getmacaddress().slice(4,12);
-                        //server.log("MAC address = " + macAddressString)
-                        if (parsedPacketString[2] == macAddressString) { // have to ignore the first 4 bytes of MAC because of string length constraint..grrr
-                                //server.log("interest packet is mine");
-                            //server.log("local modbus command detected");
-                            local hexModbusCommand = formModbusCommand(parsedPacketString);
-                            //server.log("modbus command ready: " + hexModbusCommand);
-                            // Write the formed Modbus string out
-                            writeModbus(hexModbusCommand);
-                            //server.log("modbus write complete: ");
-                            //now read the modbus until something is completely received or timeout occurs
-                             local modbusReturn = readModbus();
-                                //server.log("THE processor received modbus reply of " + modbusReturn + " of length = " + modbusReturn.len());
-                                // need to make sure we got enough data bytes back from modbus to satisfy request
-                                local numberModbusBytesRequested = 4 * parsedPacketString[6].tointeger();// 2 bytes per 16 bit register + 4 bytes in address
-                                //server.log("requested number of data bytes was: " + numberModbusBytesRequested);
-                                if (modbusReturn.len() >= numberModbusBytesRequested ) {
-                                    local cleanedModbusReturn = modbusReturn.slice(4, 4 + numberModbusBytesRequested); // strip off the unneeded 4 bytes
-                                    dataPacketString = formBaseDataPacketString(parsedPacketString) + cleanedModbusReturn;
-                                } else {
-                                    dataPacketString = formBaseDataPacketString(parsedPacketString) + "4D4F44425553204E41"; // send "No Modbus Reply" if not as long as expected or empty
-                                }
-                                //server.log("processor formed data packet string of " + dataPacketString + " and length " + dataPacketString.len());
-                                switch (sourceFace) {
-                                    case "agent":
-                                    server.log("device formed data and will return to agent " + dataPacketString + " of length " + dataPacketString.len());
-                                    agent.send("deviceToAgent", dataPacketString);
-                                    break
-                                    case "loRa":
-                                    loRaDriver.flush(); // wait until write done
-                                    loRaDriver.write(dataPacketString + newlineChar.tochar());
-                                    loRaDriver.flush(); // wait until write done
-                                            loRaDriver.flush(); // wait until write done
-                                            server.log("and was re-broadcast via LoRa");
-                                    break
-                                    default:
-                                    //server.log("unknown source face sent interest packet");
-                                }
-                        } else {
-                                // If the interest packet is addressed to a different MAC address, send it out through the LoRa
-                                //server.log("interest packet is NOT mine: " + packetString);
-                                switch (sourceFace) {
-                                    case "agent":
-                                    loRaDriver.flush(); // wait until write done
-                                    loRaDriver.write(packetString + newlineChar.tochar());
-                                    loRaDriver.flush(); // wait until write done
-                                    //server.log("...sent by agent; broadcast via LoRa");
-                                    break
-                                    case "loRa":
-                                    //server.log("...sent by LoRa; forwarding interest packets not implemented");
-                                    break
-                                    default:
-                                 //   server.log("...sent by " + sourceFace "; packet ignored");
-                                }
-            }
-                break
-                case "f":
-                    //server.log("fleetlink data model interest packets end up here")
-                        loRaDriver.flush(); // wait until write done
-                        //loRaDriver.write(packetString + newlineChar.tochar());
-                        loRaDriver.flush(); // wait until write done
-                        //server.log("range interest packet broadcast via LoRa");
-                break
-                default:
-                    //server.log("Error: Data model not implemented");
+
+                local thisEntryId = addToPIT(interface, null, iInterest) // add it to the PIT
+                //server.log("adding new Interest at PIT[" + thisEntryId +"]" )
+                server.log("intended for unit " + iInterest.name[1] + " this is unit " + iFleetLink.settings.serialNumber)
+
+                if (iInterest.name[0] == "m" && iInterest.name[1] == iFleetLink.settings.serialNumber) {  // is this a local Modbus query?
+                    server.log("this is a local modbus query ")
+                    local iModbus = Modbus()
+                    iModbus.initialize()
+                    local mData = Data()
+                    mData = iModbus.query(iInterest)
+                    mData.trace = iInterest.trace // start the data object out with the trace of the interest itself
+                    processData(mData, iFleetLink, iLoRa)   // you've got your local data, now need to send it on the right path
+                } else {
+                    iLoRa.sendWithDelay(iInterest, iFleetLink)
+                    }
                 }
+        }
+    }
 
 
-        break
-        case "d": // data packets
-            switch (sourceFace) {
+    function processData(mData, iFleetLink, iLoRa) {
+
+        local matchingPITEntryId = findMatchingPIT(mData)
+
+        if ( matchingPITEntryId != null && pendingInterestTable[matchingPITEntryId].satisfied == false) {  // does this data satisfy an unsatisfied pending Interest?
+
+
+            //////////////// DEVELOPMENT ONLY ///////////////////////////////////
+            // Units A and C should ignore direct communications, they must route through B
+                if ((iFleetLink.settings.serialNumber == "C" && mData.trace.slice(mData.trace.len()-1) == "A") ||
+                (iFleetLink.settings.serialNumber == "A" && mData.trace.slice(mData.trace.len()-1) == "C")) {
+                   server.log("Unit " + iFleetLink.settings.serialNumber + " is ignoring Unit " + mData.trace)
+                } else {
+            //////////////// DEVELOPMENT ONLY ///////////////////////////////////
+
+
+                server.log("unsatisfied matching PIT at entry " + matchingPITEntryId)
+                switch (pendingInterestTable[matchingPITEntryId].interface) {
+                    case "agent":
+                        if (mData.trace == "w") { mData.trace = ""} // remove the "w" to save space
+                        mData.trace += iFleetLink.settings.serialNumber // add this units serial number to the trace
+                        agent.send("deviceToAgent", mData.toTable())  //send the table version of the item to the agent
+                        server.log(mData.toString() + " returned to agent")
+                    break
                     case "loRa":
-                       agent.send("deviceToAgent", packetString); // everything from LoRa goes up to agent
+                        iLoRa.sendWithDelay(mData, iFleetLink)
                     break
                     default:
-                    //server.log("unknown source face sent this data packet " + sourceFace);
+                        server.log("unrecognized interface from PIT entry")
+                    }
+                    pendingInterestTable[matchingPITEntryId].satisfied = true // mark it as satisfied so you won't keep forwarding it
                 }
-        break
-        default:
-            //server.log("Failure to parse string = " + parsedPacketString[0]);
-    }
-
-}
 
 
 
-// FleetLink Modbus functions
-// Randy King
-// 2/4/2016
-
-
-
-// Initializations
-
-    modbusDriver <- hardware.uart12; // Alias the UART12
-    modbusDriver.configure(9600, 8, PARITY_NONE, 1, NO_CTSRTS ); // configure UART
-
-    rtsPin <- hardware.pin8; // Modbus hardware driver needs an RTS signal to set output enable
-    rtsPin.configure(DIGITAL_OUT,0);
-
-    local modbusOutputBuffer = blob(3); // What will be sent out at next Modbus update
-    modbusOutputBuffer[0] = 0xA0;
-    modbusOutputBuffer[1] = 0x00;
-    modbusOutputBuffer[2] = 0xFF;
-
-
-
-////////////////////////////////////////////////////////////////
-// HELPER FUNCTIONS
-////////////////////////////////////////////////////////////////
-
-
-
-
-// Convert hex STRING to an INTEGER
-// From Imp blog
-function hexToInteger(hex)
-{
-    local result = 0;
-    local shift = hex.len() * 4;
-
-    // For each digit..
-    for(local d=0; d<hex.len(); d++)
-    {
-        local digit;
-
-        // Convert from ASCII Hex to integer
-        if(hex[d] >= 0x61)
-            digit = hex[d] - 0x57;
-        else if(hex[d] >= 0x41)
-             digit = hex[d] - 0x37;
-        else
-             digit = hex[d] - 0x30;
-
-        // Accumulate digit
-        shift -= 4;
-        result += digit << shift;
-    }
-
-    return result;
-}
-
-
-// Takes a NUMERIC HEX (0x1234) or INT value and returns a STRING len bytes long with HEX values
-    function hexConvert(val, len){
-    return format("%." + (len*2) + "X", val)
+        } else {  // there's no matchingPIT or it's an unsatisfied entry, so discard it
+            server.log("no unsatisfied PIT entry and processing will terminate")
+        }
     }
 
 
-
-// Calculate the CRC16 needed by Modbus
-//  https://gist.github.com/deldrid1/3839697
-
-// blob of CRC values for high–order byte
-    const auchCRCHi = "\x00\xC1\x81\x40\x01\xC0\x80\x41\x01\xC0\x80\x41\x00\xC1\x81\x40\x01\xC0\x80\x41\x00\xC1\x81\x40\x00\xC1\x81\x40\x01\xC0\x80\x41\x01\xC0\x80\x41\x00\xC1\x81\x40\x00\xC1\x81\x40\x01\xC0\x80\x41\x00\xC1\x81\x40\x01\xC0\x80\x41\x01\xC0\x80\x41\x00\xC1\x81\x40\x01\xC0\x80\x41\x00\xC1\x81\x40\x00\xC1\x81\x40\x01\xC0\x80\x41\x00\xC1\x81\x40\x01\xC0\x80\x41\x01\xC0\x80\x41\x00\xC1\x81\x40\x00\xC1\x81\x40\x01\xC0\x80\x41\x01\xC0\x80\x41\x00\xC1\x81\x40\x01\xC0\x80\x41\x00\xC1\x81\x40\x00\xC1\x81\x40\x01\xC0\x80\x41\x01\xC0\x80\x41\x00\xC1\x81\x40\x00\xC1\x81\x40\x01\xC0\x80\x41\x00\xC1\x81\x40\x01\xC0\x80\x41\x01\xC0\x80\x41\x00\xC1\x81\x40\x00\xC1\x81\x40\x01\xC0\x80\x41\x01\xC0\x80\x41\x00\xC1\x81\x40\x01\xC0\x80\x41\x00\xC1\x81\x40\x00\xC1\x81\x40\x01\xC0\x80\x41\x00\xC1\x81\x40\x01\xC0\x80\x41\x01\xC0\x80\x41\x00\xC1\x81\x40\x01\xC0\x80\x41\x00\xC1\x81\x40\x00\xC1\x81\x40\x01\xC0\x80\x41\x01\xC0\x80\x41\x00\xC1\x81\x40\x00\xC1\x81\x40\x01\xC0\x80\x41\x00\xC1\x81\x40\x01\xC0\x80\x41\x01\xC0\x80\x41\x00\xC1\x81\x40";
-// blob of CRC values for low–order byte
-    const auchCRCLo = "\x00\xC0\xC1\x01\xC3\x03\x02\xC2\xC6\x06\x07\xC7\x05\xC5\xC4\x04\xCC\x0C\x0D\xCD\x0F\xCF\xCE\x0E\x0A\xCA\xCB\x0B\xC9\x09\x08\xC8\xD8\x18\x19\xD9\x1B\xDB\xDA\x1A\x1E\xDE\xDF\x1F\xDD\x1D\x1C\xDC\x14\xD4\xD5\x15\xD7\x17\x16\xD6\xD2\x12\x13\xD3\x11\xD1\xD0\x10\xF0\x30\x31\xF1\x33\xF3\xF2\x32\x36\xF6\xF7\x37\xF5\x35\x34\xF4\x3C\xFC\xFD\x3D\xFF\x3F\x3E\xFE\xFA\x3A\x3B\xFB\x39\xF9\xF8\x38\x28\xE8\xE9\x29\xEB\x2B\x2A\xEA\xEE\x2E\x2F\xEF\x2D\xED\xEC\x2C\xE4\x24\x25\xE5\x27\xE7\xE6\x26\x22\xE2\xE3\x23\xE1\x21\x20\xE0\xA0\x60\x61\xA1\x63\xA3\xA2\x62\x66\xA6\xA7\x67\xA5\x65\x64\xA4\x6C\xAC\xAD\x6D\xAF\x6F\x6E\xAE\xAA\x6A\x6B\xAB\x69\xA9\xA8\x68\x78\xB8\xB9\x79\xBB\x7B\x7A\xBA\xBE\x7E\x7F\xBF\x7D\xBD\xBC\x7C\xB4\x74\x75\xB5\x77\xB7\xB6\x76\x72\xB2\xB3\x73\xB1\x71\x70\xB0\x50\x90\x91\x51\x93\x53\x52\x92\x96\x56\x57\x97\x55\x95\x94\x54\x9C\x5C\x5D\x9D\x5F\x9F\x9E\x5E\x5A\x9A\x9B\x5B\x99\x59\x58\x98\x88\x48\x49\x89\x4B\x8B\x8A\x4A\x4E\x8E\x8F\x4F\x8D\x4D\x4C\x8C\x44\x84\x85\x45\x87\x47\x46\x86\x82\x42\x43\x83\x41\x81\x80\x40";
-
-
-
-
-function CRC16 ( puchMsg, usDataLen ){
-    //unsigned char *puchMsg ; // message to calculate CRC upon
-    //unsigned short usDataLen ; // quantity of bytes in message
-    local uchCRCHi = 0xFF ; // high byte of CRC initialized
-    local uchCRCLo = 0xFF ; // low byte of CRC initialized
-    local uIndex ; // will index into CRC lookup table
-    local i = 0;
-    while (usDataLen--){ // pass through message buffer
-        uIndex = uchCRCLo ^ puchMsg[i] ; // calculate the CRC
-        uchCRCLo = uchCRCHi ^ auchCRCHi[uIndex] ;
-        uchCRCHi = auchCRCLo[uIndex] ;
-        i++
-    }
-    return (uchCRCLo << 8 | uchCRCHi) ;
-}
-
-
-
-
-
-
-////////////////////////////////////////////////////////////////
-// LORA FUNCTIONS
-////////////////////////////////////////////////////////////////
-
-
-
-function loRaDataAvailable() {  // called when serial data arrives from LoRa
-    local loopCounter = 0;
-    local loRaReadString = "";
-    local loRaByte = 0;
-    local dataEverReceivedFlag = false;
-         do {
-            loRaByte = loRaDriver.read();
-            if (loRaByte != -1 ) {
-                loRaReadString += loRaByte.tochar(); // don't store -1's indicating empty UART FIFO
-                dataEverReceivedFlag = true;  // set true when first actual data has been received by UART
-                //server.log("read loop " + loopCounter + " data= " + loRaByte + " data rx flag= " + dataEverReceivedFlag);
-                loopCounter = 0; // reset the loop counter, we want to quit read loop when we've received 20000x  -1's in a row with no data
+    function cleanPIT(entryId){
+        // clears the specific entry
+        if (entryId != null) {
+            pendingInterestTable[entryId].clear()
+        }
+        // and any expired timer entries as well
+        for (local i=0; i <pendingInterestTable.len(); i++) { //
+            if (pendingInterestTable[i].rawin("timer")) { // if there is a timer entry
+            //server.log("checking PIT[" + i + "]for expired entries..." );
+                if (pendingInterestTable[i].timer < time()) {
+                    //server.log("PIT[" + i + "] has an expired entry" );
+                    pendingInterestTable[i].clear()
+                    //server.log(" and was cleared")
+                }
             }
-            loopCounter++;
+        }
+    }
 
-        } while(loopCounter <= 500); // going to block here for 50 reads
-            local sourceFace = "loRa";
-            packetHandler(loRaReadString, sourceFace);// this line happens when the message is complete., will call handler
+
+    function findMatchingPIT (dObject){
+        local matchingPITIndex = null
+        for (local i=0; i<pendingInterestTable.len(); i++) {  // look through every interest object in the PIT
+            local matchFlag = true   // set a boolean flag that the string match
+            if (pendingInterestTable[i].rawin("interest") ){ // can't check without a interest entry
+                 //server.log("checking PIT Entry = " + i)
+                 if (pendingInterestTable[i].interest.name.len() != dObject.name.len()) { // check if the Names have the same number of components, if not they are  not equal
+                     matchFlag = false;
+                     //server.log("no PIT match because number of name components not equal")
+                 } else {  // if they ARE the same length, compare each name component
+                    for (local j=0; j<10; j++) {
+                       // if (pendingInterestTable[i].interest.name[j] != null) {
+                            if (pendingInterestTable[i].interest.name[j] != dObject.name[j]) {
+                                //server.log(pendingInterestTable[i].interest.name[j] + " equals? " +dObject.name[j])
+                                   // server.log("match failed at name " + j)
+                                     matchFlag = false // if any of the name components don't match, clear the flag
+                        //    }
+                        }
+                        // server.log("checking name component " + j + " with values " + pendingInterestTable[i].interest.name[j] + " and " + dObject.name[j]);
+                    }
+
+                    // server.log("checking PIT entry nonce " + pendingInterestTable[i].interest.nonce + " equals object nonce " + dObject.nonce)
+                    if (pendingInterestTable[i].interest.nonce.tostring() != dObject.nonce.tostring()) {  // the nonces must match as well, seems like one was an integer?
+                       //server.log("match failed at nonce")
+                        matchFlag = false
+                    }
+                 }
+                if (matchFlag == true) {
+                    matchingPITIndex = i
+                } else {
+                    matchingPITIndex = null
+                    //server.log("no matching PIT found")
+                }
+            }
+         }
+    return matchingPITIndex // send back the index of the matching PIT entry
+    }
+
+
 }
 
+
+class Data {
+
+    static type = "d"
+    name = array(10, null)
+    nonce = null
+    contents = null
+    trace = null // in a wireless network we have to track who sent the interest within the interest itself
+
+    function fromTable (dTable) {
+        name = dTable.name
+        nonce = dTable.nonce
+        contents = dTable.contents
+        trace = dTable.trace
+    }
+
+    function toTable () {
+        local dTable = { "name": name, "nonce": nonce, "contents": contents, "trace": trace} //
+        return dTable
+    }
+
+     function toString () {
+        // server.log("converting Data object to string")
+        local dString = type + "/"
+        for (local i=0; i<name.len(); i++) {
+            if (name[i] != null) {
+                dString += name[i]
+                dString += "/"
+            }
+        }
+        dString += nonce + "/"
+        dString += contents + "/"
+        dString += trace
+        return dString
+    }
+
+    function fromString(dString) {
+        // the format of the string is type / name[0] / name[1] / ..../ name[9] / nonce / contents / trace
+        // where the number of name components is 10 or less
+
+        for(local i = 0; i<name.len(); i++) {
+        name[i] = null // clear the name to start
+        }
+
+        local sArray = split(dString, "/")
+        local numComponents = sArray.len() // this is how many string components we have
+
+        if (sArray[0] == "d") {
+            //server.log("forming data from string")
+            for (local i = 0; i <  numComponents - 4; i++) {  // there will be N-4 name components where N is the number of string components
+                name[i] = sArray[i+1] // skip the first string component because it is always "d"
+                //server.log("name[i] " + name[i] + " sArray[i+1] " +sArray[i+1])
+            }
+            nonce = sArray[numComponents-3]
+            contents = sArray[numComponents-2]
+            trace = sArray[numComponents-1]
+        } else {
+            server.log("this is not a data string and can't be parsed")
+        }
+    }
+
+    function fromModbusResponse(dInterest, mString) {
+        //server.log("forming data object from " + mString + " of length " + mString.len())
+        if (mString.len() > 6) { // looks like you got a real Modbus reply
+            name = dInterest.name
+            nonce = dInterest.nonce
+            contents = mString.slice(4, mString.len()-6)  // throw away first four and last six characters of modbus response
+        } else {  // probably didn;t get a reply
+            server.log("no modbus reply")
+            name = dInterest.name
+            nonce = dInterest.nonce
+            contents = "4E6F204D6F64627573" // ASCII for "No Modbus"
+        }
+    }
+}
+
+
+class Modbus {
+
+    modbusDriver = null
+    rtsPin = null
+    outputBuffer = blob(3); // What will be sent out at next Modbus update
+    hexModbusID = null
+    hexModbusFC = null
+    hexModbusRegister = null
+    hexModbusNumberRegisters = null
+
+
+    function initialize() {
+
+        // Modbus Initialization
+        modbusDriver = hardware.uart12; // Alias the UART12
+        modbusDriver.configure(9600, 8, PARITY_NONE, 1, NO_CTSRTS ); // configure UART
+        rtsPin = hardware.pin8; // Imp setup : Modbus hardware driver needs an RTS signal to set output enable
+        rtsPin.configure(DIGITAL_OUT,0);
+
+    }
+
+    function writeString(modbusWriteString) {     // Write the included string to the Modbus, a character at a time
+        local modbusWriteBlob = blob(); //set up a local blob for writing to UART
+        // The write strng comes in as an even number of hex digits, like this "A0B31F"
+        // I should probably write a function to strip any spaces out and make sure the number of characters is even <<-!!
+        // we parse this into a blob containing the byte values of each pair of hex digits and write that single byte value to the blob
+
+        for (local stringIndex = 0 ; stringIndex < modbusWriteString.len() ; stringIndex += 2) {
+            local blobIndex = stringIndex / 2; // two characters in the hex string equal one value in the blob
+            local byteValue = hexToInteger(modbusWriteString.slice(stringIndex, stringIndex+2)); // turn a pair of hex characters into a single byte value
+            modbusWriteBlob.writen(byteValue,'b');  // write that byte value into the blob
+        }
+
+       // Now we have the blob in writable format, send it to calculate the CRC
+        local calculatedCRC = hexConvert(CRC16(modbusWriteBlob, 6),2); // Calculated CRC16 in string form
+        local integerCrcHi = hexToInteger(calculatedCRC.slice(0,2)); // need the Hi and Lo bytes in integer form to add to blob for output
+        local integerCrcLo = hexToInteger(calculatedCRC.slice(2,4));
+        modbusWriteBlob.writen(integerCrcHi,'b');  // write that byte value into the blob
+        modbusWriteBlob.writen(integerCrcLo,'b');  // write that byte value into the blob
+
+        // Actually send to UART
+        rtsPin.write(1); // raise RTS to enable the Modbus driver
+            modbusDriver.write(modbusWriteBlob);
+            modbusDriver.flush(); // wait until write done to unassert RTS
+        rtsPin.write(0); // lower RTS to change back to receive mode for inverter reply
+    }
+
+    function readString() {  // Read whatever is in the UART FIFO
+
+        local loopCounter = 0;
+        local modbusReadString = "";
+        local modbusByte = 0;
+        local dataEverReceivedFlag = false;
+             do {
+                modbusByte = modbusDriver.read();
+                if (modbusByte != -1 ) {
+                    modbusReadString += format("%.2X",modbusByte); // don't store -1's indicating empty UART FIFO
+                    dataEverReceivedFlag = true;  // set true when first actual data has been received by UART
+                    loopCounter = 0; // reset the loop counter, we want to quit read loop when we've received 20000x  -1's in a row with no data
+                }
+                loopCounter++;
+                // server.log("read loop " + loopCounter + " data= " + modbusByte + " data rx flag= " + dataEverReceivedFlag);
+            } while(loopCounter <= 20000); // going to block here for 20000x reads
+            // it would have been better to use a wakeup timer to cancel the read loop, but I couldn't make it work!
+        return  modbusReadString;
+    }
+
+    function query(qInterest) {
+        local wString =  qInterest.toModbusCommand(qInterest)
+       // server.log(wString)
+        writeString(wString)
+        local rString = readString()
+        local qData = Data()
+        qData.fromModbusResponse(qInterest, rString)
+        return qData
+    }
+}
+
+
+class LoRa {
+
+    //static newLineChar = 10
+
+    // called when serial data arrives from LoRa
+    function readString() {
+        local loopCtr = 0;
+        local rString = "";
+        local rByte = 0;
+        local dataEverReceivedFlag = false;
+        //server.log("LoRa data available, loRaDriver = " + loRaDriver)
+             do {
+                rByte = loRaDriver.read();
+                if (rByte != -1 && rByte != 10) {
+                    rString += rByte.tochar(); // don't store -1's indicating empty UART FIFO or 10, which is termination /N
+                    dataEverReceivedFlag = true;  // set true when first actual data has been received by UART
+                    loopCtr = 0; // reset the loop counter, we want to quit read loop when we've received 20000x  -1's in a row with no data
+                }
+                loopCtr++;
+
+            } while(loopCtr <= 500); // going to block here for 50 reads
+                //server.log("LoRa reception of " + rString + " of size " + rString.len())
+
+        return rString
+    }
+
+    function sendWithDelay(objectToSend, iFleetLink) {
+
+        // if this object was sourced from this unit then send immediately
+        // this is the case for Interests that just came from the agent (first case)
+        // or Datas that were generated by the local Modbus (2nd case)
+        server.log("considering delay for trace= " +objectToSend.trace + " and generated by " + objectToSend.name[1])
+        //if (objectToSend.trace == "w" || objectToSend.name[1] == iFleetLink.settings.serialNumber) {
+        if (objectToSend.trace == "w") {
+            objectToSend.trace = iFleetLink.settings.serialNumber // replace the "w" with this units serial number in the trace
+            server.log("this is new agent interest, transmitting immediately")
+            sendLoRa(objectToSend, iFleetLink)
+        } else if (objectToSend.name[1] == iFleetLink.settings.serialNumber) {
+            objectToSend.trace += iFleetLink.settings.serialNumber // add this units serial number to the trace
+            server.log("this is my local data, transmitting immediately")
+            sendLoRa(objectToSend, iFleetLink)
+        } else {  // or wait an entire transmit period to forward a non local object
+            objectToSend.trace += iFleetLink.settings.serialNumber // add this units serial number to the trace
+            server.log("adding 2 second transmit delay")
+            imp.wakeup(2, function() {sendLoRa(objectToSend, iFleetLink);})
+        }
+    }
+
+
+}
+
+
+
+
+
+//////////////////////  INITIALIZATIONS  //////////////////////////
+
+    local aFace = DeviceFace() //does it need an intialize function
+
+
+    // Get the FleetLink settings in the device
+    local thisFleetLink = FleetLink()
+    function loadFleetLink(iSettings) {
+        thisFleetLink.settings = iSettings
+        //server.log("FL settings received by device, serial number is " + thisFleetLink.settings.serialNumber )
+    } // change to an initialize function for parallelism?
+
+
+    local aLoRa = LoRa()
+    function loRaAvailable() {
+        local lString = aLoRa.readString()
+        server.log(lString  + " received from LoRa" )
+
+            switch (lString.slice(0,1)){
+            case "i":
+                //server.log("LoRa received an Interest")
+                local lInterest = Interest()
+                lInterest.fromString(lString)
+                aFace.processInterest("loRa", lInterest, thisFleetLink, aLoRa)
+
+            break
+            case "d":
+                //server.log("LoRa received a Data " + lString)
+                local lData = Data()
+                lData.fromString(lString)
+                aFace.processData(lData, thisFleetLink, aLoRa)
+            break
+            default:
+                server.log("unknown transmission received from LoRa")
+            }
+
+    }
 
 
     loRaDriver <- hardware.uart57; // alias the LoRa serial port
-    loRaDriver.configure(9600, 8, PARITY_NONE, 1, NO_CTSRTS, loRaDataAvailable ); // configure UART to callback when serial data arrives from LoRa radio
+    loRaDriver.configure(115200, 8, PARITY_NONE, 1, NO_CTSRTS, loRaAvailable ); // configure UART to callback when serial data arrives from LoRa radio
 
+    function sendLoRa(objectToSend, iFleetLink) {
+        local newLineChar = 10
 
-
-
-
-
-
-
-
-
-
-////////////////////////////////////////////////////////////////
-// MODBUS FUNCTIONS
-////////////////////////////////////////////////////////////////
-
-
-function readModbus() {  // Read whatever is in the UART FIFO
-
-    local loopCounter = 0;
-    local modbusReadString = "";
-    local modbusByte = 0;
-    local dataEverReceivedFlag = false;
-         do {
-            modbusByte = modbusDriver.read();
-            if (modbusByte != -1 ) {
-                modbusReadString += format("%.2X",modbusByte); // don't store -1's indicating empty UART FIFO
-                dataEverReceivedFlag = true;  // set true when first actual data has been received by UART
-                loopCounter = 0; // reset the loop counter, we want to quit read loop when we've received 20000x  -1's in a row with no data
-            }
-            loopCounter++;
-            // server.log("read loop " + loopCounter + " data= " + modbusByte + " data rx flag= " + dataEverReceivedFlag);
-        } while(loopCounter <= 20000); // going to block here for 20000x reads
-        // it would have been better to use a wakeup timer to cancel the read loop, but I couldn't make it work!
-    return  modbusReadString;
-}
-
-
-function writeModbus(modbusWriteString) {     // Write the included string to the Modbus, a character at a time
-    local modbusWriteBlob = blob(); //set up a local blob for writing to UART
-    // The write strng comes in as an even number of hex digits, like this "A0B31F"
-    // I should probably write a function to strip any spaces out and make sure the number of characters is even <<-!!
-    // we parse this into a blob containing the byte values of each pair of hex digits and write that single byte value to the blob
-
-    for (local stringIndex = 0 ; stringIndex < modbusWriteString.len() ; stringIndex += 2) {
-        local blobIndex = stringIndex / 2; // two characters in the hex string equal one value in the blob
-        local byteValue = hexToInteger(modbusWriteString.slice(stringIndex, stringIndex+2)); // turn a pair of hex characters into a single byte value
-        modbusWriteBlob.writen(byteValue,'b');  // write that byte value into the blob
+        local stringToSend = objectToSend.toString()
+        loRaDriver.write(stringToSend + newLineChar.tochar())
+        loRaDriver.flush(); // wait until write done
+        server.log(stringToSend + " sent to LoRa")
     }
 
-   // Now we have the blob in writable format, send it to calculate the CRC
-    local calculatedCRC = hexConvert(CRC16(modbusWriteBlob, 6),2); // Calculated CRC16 in string form
-    local integerCrcHi = hexToInteger(calculatedCRC.slice(0,2)); // need the Hi and Lo bytes in integer form to add to blob for output
-    local integerCrcLo = hexToInteger(calculatedCRC.slice(2,4));
-    modbusWriteBlob.writen(integerCrcHi,'b');  // write that byte value into the blob
-    modbusWriteBlob.writen(integerCrcLo,'b');  // write that byte value into the blob
+//////////////////////  RUN TIME EVENT REGISTRATION  //////////////////////////
 
-    // Actually send to UART
-    rtsPin.write(1); // raise RTS to enable the Modbus driver
-        modbusDriver.write(modbusWriteBlob);
-        modbusDriver.flush(); // wait until write done to unassert RTS
-    rtsPin.write(0); // lower RTS to change back to receive mode for inverter reply
-}
+    agent.on("sendSettings", loadFleetLink)
+    agent.send("requestSettings", null) // ask for settings
+
+//////////////////////  AGENT COMMS HANDLER  //////////////////////////
+
+    function receivedAgentInterest(iTable) {
+        local aInterest = Interest()
+        aInterest.fromTable(iTable)
+        server.log(aInterest.toString() + " received from agent")
+        aFace.processInterest("agent", aInterest, thisFleetLink, aLoRa)
+    }
+
+    agent.on("agentToDevice", receivedAgentInterest);
+
+
+//////////////////////  DEVICE DISCONNECTION HANDLER  //////////////////////////
+
+    function reconnect() {
+        // server.connect calls disconnectHandler() on success or failure
+        // with an appropriate reason parameter
+        server.connect(disconnectionHandler, 60);
+    }
+
+    // Define the disconnection handler function
+    function disconnectionHandler(reason) {
+        if (reason != SERVER_CONNECTED) {
+            imp.wakeup(300, reconnect)             // Attempt to reconnect in 5 minutes' time
+        } else {
+            server.log("Device reconnected");
+        }
+    }
+
+    // Set the disconnection policy
+    server.setsendtimeoutpolicy(RETURN_ON_ERROR, WAIT_TIL_SENT, 30);
+
+    // Register the unexpected disconnect handler
+    server.onunexpecteddisconnect(disconnectionHandler);
+
+
+
+
+//////////////////////  BACKGROUND TASK TO CLEAN UP PIT  //////////////////////////
+
+    function checkExpiredPIT() {
+        aFace.cleanPIT(null)
+        imp.wakeup(5, checkExpiredPIT) ;   // remove expire interests from PIT
+    }
+
+     checkExpiredPIT(); // start PIT cleaner running
+
+
+
+
+//////////////////////  HELPER FUNCTIONS  ///////////////////////////////////
+
+    // Convert hex STRING to an INTEGER
+    function hexToInteger(hex) {
+        local result = 0;
+        local shift = hex.len() * 4;
+
+        // For each digit..
+        for(local d=0; d<hex.len(); d++) {
+            local digit;
+            // Convert from ASCII Hex to integer
+            if(hex[d] >= 0x61)
+                digit = hex[d] - 0x57;
+            else if(hex[d] >= 0x41)
+                 digit = hex[d] - 0x37;
+            else
+                 digit = hex[d] - 0x30;
+            // Accumulate digit
+            shift -= 4;
+            result += digit << shift;
+        }
+        return result;
+    }
+
+    // Takes a NUMERIC HEX (0x1234) or INT value and returns a STRING len bytes long with HEX values
+    function hexConvert(val, len){
+        return format("%." + (len*2) + "X", val)
+        }
+
+    // Calculate the CRC16 needed by Modbus   https://gist.github.com/deldrid1/3839697
+    function CRC16 ( puchMsg, usDataLen ){
+        const auchCRCHi = "\x00\xC1\x81\x40\x01\xC0\x80\x41\x01\xC0\x80\x41\x00\xC1\x81\x40\x01\xC0\x80\x41\x00\xC1\x81\x40\x00\xC1\x81\x40\x01\xC0\x80\x41\x01\xC0\x80\x41\x00\xC1\x81\x40\x00\xC1\x81\x40\x01\xC0\x80\x41\x00\xC1\x81\x40\x01\xC0\x80\x41\x01\xC0\x80\x41\x00\xC1\x81\x40\x01\xC0\x80\x41\x00\xC1\x81\x40\x00\xC1\x81\x40\x01\xC0\x80\x41\x00\xC1\x81\x40\x01\xC0\x80\x41\x01\xC0\x80\x41\x00\xC1\x81\x40\x00\xC1\x81\x40\x01\xC0\x80\x41\x01\xC0\x80\x41\x00\xC1\x81\x40\x01\xC0\x80\x41\x00\xC1\x81\x40\x00\xC1\x81\x40\x01\xC0\x80\x41\x01\xC0\x80\x41\x00\xC1\x81\x40\x00\xC1\x81\x40\x01\xC0\x80\x41\x00\xC1\x81\x40\x01\xC0\x80\x41\x01\xC0\x80\x41\x00\xC1\x81\x40\x00\xC1\x81\x40\x01\xC0\x80\x41\x01\xC0\x80\x41\x00\xC1\x81\x40\x01\xC0\x80\x41\x00\xC1\x81\x40\x00\xC1\x81\x40\x01\xC0\x80\x41\x00\xC1\x81\x40\x01\xC0\x80\x41\x01\xC0\x80\x41\x00\xC1\x81\x40\x01\xC0\x80\x41\x00\xC1\x81\x40\x00\xC1\x81\x40\x01\xC0\x80\x41\x01\xC0\x80\x41\x00\xC1\x81\x40\x00\xC1\x81\x40\x01\xC0\x80\x41\x00\xC1\x81\x40\x01\xC0\x80\x41\x01\xC0\x80\x41\x00\xC1\x81\x40";
+        const auchCRCLo = "\x00\xC0\xC1\x01\xC3\x03\x02\xC2\xC6\x06\x07\xC7\x05\xC5\xC4\x04\xCC\x0C\x0D\xCD\x0F\xCF\xCE\x0E\x0A\xCA\xCB\x0B\xC9\x09\x08\xC8\xD8\x18\x19\xD9\x1B\xDB\xDA\x1A\x1E\xDE\xDF\x1F\xDD\x1D\x1C\xDC\x14\xD4\xD5\x15\xD7\x17\x16\xD6\xD2\x12\x13\xD3\x11\xD1\xD0\x10\xF0\x30\x31\xF1\x33\xF3\xF2\x32\x36\xF6\xF7\x37\xF5\x35\x34\xF4\x3C\xFC\xFD\x3D\xFF\x3F\x3E\xFE\xFA\x3A\x3B\xFB\x39\xF9\xF8\x38\x28\xE8\xE9\x29\xEB\x2B\x2A\xEA\xEE\x2E\x2F\xEF\x2D\xED\xEC\x2C\xE4\x24\x25\xE5\x27\xE7\xE6\x26\x22\xE2\xE3\x23\xE1\x21\x20\xE0\xA0\x60\x61\xA1\x63\xA3\xA2\x62\x66\xA6\xA7\x67\xA5\x65\x64\xA4\x6C\xAC\xAD\x6D\xAF\x6F\x6E\xAE\xAA\x6A\x6B\xAB\x69\xA9\xA8\x68\x78\xB8\xB9\x79\xBB\x7B\x7A\xBA\xBE\x7E\x7F\xBF\x7D\xBD\xBC\x7C\xB4\x74\x75\xB5\x77\xB7\xB6\x76\x72\xB2\xB3\x73\xB1\x71\x70\xB0\x50\x90\x91\x51\x93\x53\x52\x92\x96\x56\x57\x97\x55\x95\x94\x54\x9C\x5C\x5D\x9D\x5F\x9F\x9E\x5E\x5A\x9A\x9B\x5B\x99\x59\x58\x98\x88\x48\x49\x89\x4B\x8B\x8A\x4A\x4E\x8E\x8F\x4F\x8D\x4D\x4C\x8C\x44\x84\x85\x45\x87\x47\x46\x86\x82\x42\x43\x83\x41\x81\x80\x40";
+
+        //unsigned char *puchMsg ; // message to calculate CRC upon
+        //unsigned short usDataLen ; // quantity of bytes in message
+        local uchCRCHi = 0xFF ; // high byte of CRC initialized
+        local uchCRCLo = 0xFF ; // low byte of CRC initialized
+        local uIndex ; // will index into CRC lookup table
+        local i = 0;
+        while (usDataLen--){ // pass through message buffer
+            uIndex = uchCRCLo ^ puchMsg[i] ; // calculate the CRC
+            uchCRCLo = uchCRCHi ^ auchCRCHi[uIndex] ;
+            uchCRCHi = auchCRCLo[uIndex] ;
+            i++
+        }
+        return (uchCRCLo << 8 | uchCRCHi) ;
+    }
