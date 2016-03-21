@@ -137,14 +137,14 @@
 
                     traceRoute(dataTable.trace); //display the route trace
                     new Audio("img/smallBell2.wav").play();  // sound chime to indicate successful data packet reception
-                    setTimeout(function(){document.getElementById("expressInterestPacket").disabled = false;}, 3000 );
+                    setTimeout(function(){document.getElementById("expressInterestPacket").disabled = false;}, 7000 );
                   }
             },
            error : function(jqXHR, textStatus, err) {
 
                var errorResponse = jqXHR.status + ' ' + textStatus + ': ' + err + ' - ' + jqXHR.responseText;
                document.getElementById("returnedDataPacket").textContent = errorResponse;
-               setTimeout(function(){document.getElementById("expressInterestPacket").disabled = false;}, 3000 );
+               setTimeout(function(){document.getElementById("expressInterestPacket").disabled = false;}, 7000 );
            }
          });
        }
