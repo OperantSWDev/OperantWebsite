@@ -70,7 +70,7 @@
     
     // Network activity timer
     unsigned long networkActivityTimer; //in ms, we use 'unsigned long' because ms timer is unsigned long integer
-    unsigned long networkActivityTimeout = 5000; // clear the network out every 3 seconds of no activity
+    unsigned long networkActivityTimeout = 5000; // clear the network out every 5 seconds of no activity
       
   
 
@@ -95,7 +95,7 @@
     rf95.spiWrite(RH_RF95_REG_0B_OCP, 0x2F); //set OCP to 120 mA..KEEP DUTY CYCLE LOW at +20 dBm!!
     rf95.spiWrite(RH_RF95_REG_0C_LNA, 0x03); // LNA settings: Boost on, 150% LNA current
     rf95.spiWrite(RH_RF95_REG_1D_MODEM_CONFIG1, 0x82); //set BW to 250 kHz, Coding Rate to 4/5, Explicit Header ON
-    rf95.spiWrite(RH_RF95_REG_1E_MODEM_CONFIG2, 0xC4); // set SF at 12, TXContinous = Normal, CRC ON                 <===!! DEVELOPMENT
+    rf95.spiWrite(RH_RF95_REG_1E_MODEM_CONFIG2, 0xA4); // set SF at 10, TXContinous = Normal, CRC ON                 <===!! DEVELOPMENT
     rf95.spiWrite(RH_RF95_REG_21_PREAMBLE_LSB, 0x08); // Preamble Length LSB (+ 4.25 Symbols)
     rf95.spiWrite(RH_RF95_REG_22_PAYLOAD_LENGTH, 0x10); // Payload length in bytes. Set at 16B by definition 
     rf95.spiWrite(RH_RF95_REG_26_MODEM_CONFIG3, 0x04); // LNA gain set by the internal AGC loop
@@ -131,10 +131,14 @@
                   
                   //debug printing
                   Serial.print("LoRa packet received: ");
-                  Serial.print((char*)loRaRxPacket); 
+                  Serial.print((char*)loRaRxPacket);
+                  Serial.print("------");
+                  Serial.println(millis()); 
+                  
                   int lastRSSIVal = rf95.lastRssi();
-                  Serial.print(" with RSSI= ");
-                  Serial.println(lastRSSIVal); 
+                  //Serial.print(" with RSSI= ");
+                  //Serial.println(lastRSSIVal); 
+
                   
                   
                   // add MessageToImp
@@ -157,7 +161,9 @@
 
                       //debug printing
                       Serial.print("Message sent to Imp = "); // echo for debug
-                      Serial.println((char*)messageToImp); // send the LoRa reception to IMP
+                      Serial.print((char*)messageToImp); // send the LoRa reception to IMP
+                      Serial.print("------");
+                      Serial.println(millis()); 
                       
                       clearAll(); 
                   }
@@ -184,7 +190,8 @@
           while (millis() - serial1RxTimer < serial1RxTimeout) { 
 
               if (Serial1.available()) {            
-                    //Serial.println("byte at serial1 port..");
+                    //Serial.print("byte at serial1 port..");
+                   // Serial.println(millis());
                     impRxByte = Serial1.read(); // get one byte from serial port
                     
                     /*
@@ -213,7 +220,9 @@
       
                         //debug printing
                         Serial.print("Message received from Serial1 = "); // echo for debug
-                        Serial.println((char*)messageToLoRa); // send the LoRa reception to IMP
+                        Serial.print((char*)messageToLoRa); // send the LoRa reception to IMP
+                        Serial.print("------");
+                        Serial.println(millis()); 
                         
                         // packetParser
                         
@@ -250,9 +259,9 @@
                               }    
       
                               //debug printing
-                              //Serial.print("LoRa Packet Length= ");
-                              //Serial.println(sizeof(loRaTxPacket));
-                              
+                              Serial.print("LoRa Packet Length= ");
+                              Serial.println(sizeof(loRaTxPacket));
+                              Serial.println(millis());
                               
                               
                               digitalWrite(LED,HIGH);
@@ -266,9 +275,12 @@
                                     for (int n=0; n<sizeof(loRaTxPacket); n++) {
                                       Serial.print((char)loRaTxPacket[n]); 
                                     }
-                                    Serial.println(" sent successfully");
+                                      Serial.print("------");
+                                      Serial.println(millis()); 
                                  } else {
-                                   Serial.println("TX canceled");
+                                   Serial.print("TX canceled");
+                                   Serial.print("------");
+                                   Serial.println(millis()); 
                                    txCanceledFlag = true;
                                  }
                               
@@ -282,7 +294,8 @@
                                      for (int n=0; n<sizeof(loRaTxPacket); n++) {
                                        Serial.print((char)loRaTxPacket[n]); 
                                      }
-                                     Serial.println(" sent successfully");
+                                     Serial.print("------");
+                                     Serial.println(millis()); 
                                    }
                               }
                               digitalWrite(LED,LOW);
@@ -308,6 +321,7 @@
       // clear the network buffers if nothings happened lately on network
       if (millis() - networkActivityTimer > networkActivityTimeout) {
           networkActivityTimer = millis();
+          Serial.println("Network activity timeout");
           clearAll();    
       }
     
