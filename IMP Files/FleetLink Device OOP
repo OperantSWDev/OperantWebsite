@@ -59,7 +59,7 @@ class Interest {
             trace = sArray[numComponents -1]
 
         } else {
-            server.log("this is not an interest string and can't be parsed")
+            //server.log("this is not an interest string and can't be parsed")
         }
     }
 
@@ -99,7 +99,7 @@ class DeviceFace {
 
     function processInterest(interface, iInterest, iFleetLink, iLoRa) {
         if (findMatchingPIT(iInterest) != null) {
-            server.log("this is an existing Interest and processing will terminate")
+            //server.log("this is an existing Interest and processing will terminate")
         } else {  // It's a new interest..here we go!
 
 
@@ -114,7 +114,7 @@ class DeviceFace {
 
                 local thisEntryId = addToPIT(interface, null, iInterest) // add it to the PIT
                 //server.log("adding new Interest at PIT[" + thisEntryId +"]" )
-                server.log("intended for unit " + iInterest.name[1] + " this is unit " + iFleetLink.settings.serialNumber)
+                //server.log("intended for unit " + iInterest.name[1] + " this is unit " + iFleetLink.settings.serialNumber)
 
                 if (iInterest.name[0] == "m" && iInterest.name[1] == iFleetLink.settings.serialNumber) {  // is this a local Modbus query?
                     server.log("this is a local modbus query ")
@@ -143,24 +143,24 @@ class DeviceFace {
             // Units A and C should ignore direct communications, they must route through B
                 if ((iFleetLink.settings.serialNumber == "C" && mData.trace.slice(mData.trace.len()-1) == "A") ||
                 (iFleetLink.settings.serialNumber == "A" && mData.trace.slice(mData.trace.len()-1) == "C")) {
-                   server.log("Unit " + iFleetLink.settings.serialNumber + " is ignoring Unit " + mData.trace)
+                   //server.log("Unit " + iFleetLink.settings.serialNumber + " is ignoring Unit " + mData.trace)
                 } else {
             //////////////// DEVELOPMENT ONLY ///////////////////////////////////
 
 
-                server.log("unsatisfied matching PIT at entry " + matchingPITEntryId)
+                //server.log("unsatisfied matching PIT at entry " + matchingPITEntryId)
                 switch (pendingInterestTable[matchingPITEntryId].interface) {
                     case "agent":
                         if (mData.trace == "w") { mData.trace = ""} // remove the "w" to save space
                         mData.trace += iFleetLink.settings.serialNumber // add this units serial number to the trace
                         agent.send("deviceToAgent", mData.toTable())  //send the table version of the item to the agent
-                        server.log(mData.toString() + " returned to agent")
+                        //server.log(mData.toString() + " returned to agent")
                     break
                     case "loRa":
                         iLoRa.sendWithDelay(mData, iFleetLink)
                     break
                     default:
-                        server.log("unrecognized interface from PIT entry")
+                       // server.log("unrecognized interface from PIT entry")
                     }
                     pendingInterestTable[matchingPITEntryId].satisfied = true // mark it as satisfied so you won't keep forwarding it
                 }
@@ -168,7 +168,7 @@ class DeviceFace {
 
 
         } else {  // there's no matchingPIT or it's an unsatisfied entry, so discard it
-            server.log("no unsatisfied PIT entry and processing will terminate")
+            //server.log("no unsatisfied PIT entry and processing will terminate")
         }
     }
 
@@ -290,7 +290,7 @@ class Data {
             contents = sArray[numComponents-2]
             trace = sArray[numComponents-1]
         } else {
-            server.log("this is not a data string and can't be parsed")
+            //server.log("this is not a data string and can't be parsed")
         }
     }
 
@@ -301,7 +301,7 @@ class Data {
             nonce = dInterest.nonce
             contents = mString.slice(4, mString.len()-6)  // throw away first four and last six characters of modbus response
         } else {  // probably didn;t get a reply
-            server.log("no modbus reply")
+            //server.log("no modbus reply")
             name = dInterest.name
             nonce = dInterest.nonce
             contents = "4E6F204D6F64627573" // ASCII for "No Modbus"
@@ -368,11 +368,10 @@ class Modbus {
                 if (modbusByte != -1 ) {
                     modbusReadString += format("%.2X",modbusByte); // don't store -1's indicating empty UART FIFO
                     dataEverReceivedFlag = true;  // set true when first actual data has been received by UART
-                    loopCounter = 0; // reset the loop counter, we want to quit read loop when we've received 20000x  -1's in a row with no data
                 }
                 loopCounter++;
-                // server.log("read loop " + loopCounter + " data= " + modbusByte + " data rx flag= " + dataEverReceivedFlag);
-            } while(loopCounter <= 20000); // going to block here for 20000x reads
+                 //server.log("read loop " + loopCounter + " data= " + modbusByte + " data rx flag= " + dataEverReceivedFlag);
+            } while(loopCounter <= 500); // going to block here for 500x reads
             // it would have been better to use a wakeup timer to cancel the read loop, but I couldn't make it work!
         return  modbusReadString;
     }
@@ -416,24 +415,27 @@ class LoRa {
     }
 
     function sendWithDelay(objectToSend, iFleetLink) {
-
+        local txDelay
         // if this object was sourced from this unit then send immediately
         // this is the case for Interests that just came from the agent (first case)
         // or Datas that were generated by the local Modbus (2nd case)
-        server.log("considering delay for trace= " +objectToSend.trace + " and generated by " + objectToSend.name[1])
+        //server.log("considering delay for trace= " +objectToSend.trace + " and generated by " + objectToSend.name[1])
         //if (objectToSend.trace == "w" || objectToSend.name[1] == iFleetLink.settings.serialNumber) {
         if (objectToSend.trace == "w") {
             objectToSend.trace = iFleetLink.settings.serialNumber // replace the "w" with this units serial number in the trace
-            server.log("this is new agent interest, transmitting immediately")
-            sendLoRa(objectToSend, iFleetLink)
+            //server.log("this is new agent interest, transmitting in 50 ms")
+            txDelay = 1
+            sendLoRa(objectToSend, iFleetLink, txDelay)
         } else if (objectToSend.name[1] == iFleetLink.settings.serialNumber) {
             objectToSend.trace += iFleetLink.settings.serialNumber // add this units serial number to the trace
-            server.log("this is my local data, transmitting immediately")
-            sendLoRa(objectToSend, iFleetLink)
+            //server.log("this is my local data, transmitting in 50 ms")
+            txDelay = 1
+            sendLoRa(objectToSend, iFleetLink, txDelay)
         } else {  // or wait an entire transmit period to forward a non local object
             objectToSend.trace += iFleetLink.settings.serialNumber // add this units serial number to the trace
-            server.log("adding 2 second transmit delay")
-            imp.wakeup(2, function() {sendLoRa(objectToSend, iFleetLink);})
+            txDelay = 3 + irand(16) // random number between 3 and 19
+             server.log("forward w/ delay " + 50*txDelay)
+            imp.wakeup(2, function() {sendLoRa(objectToSend, iFleetLink, txDelay);})
         }
     }
 
@@ -460,7 +462,7 @@ class LoRa {
     local aLoRa = LoRa()
     function loRaAvailable() {
         local lString = aLoRa.readString()
-        server.log(lString  + " received from LoRa" )
+        //server.log(lString  + " received from LoRa" )
 
             switch (lString.slice(0,1)){
             case "i":
@@ -477,7 +479,7 @@ class LoRa {
                 aFace.processData(lData, thisFleetLink, aLoRa)
             break
             default:
-                server.log("unknown transmission received from LoRa")
+                //server.log("unknown transmission received from LoRa: " + lString)
             }
 
     }
@@ -486,13 +488,13 @@ class LoRa {
     loRaDriver <- hardware.uart57; // alias the LoRa serial port
     loRaDriver.configure(115200, 8, PARITY_NONE, 1, NO_CTSRTS, loRaAvailable ); // configure UART to callback when serial data arrives from LoRa radio
 
-    function sendLoRa(objectToSend, iFleetLink) {
+    function sendLoRa(objectToSend, iFleetLink, txDelay) {
         local newLineChar = 10
-
         local stringToSend = objectToSend.toString()
-        loRaDriver.write(stringToSend + newLineChar.tochar())
+        local actualTxDelay = 50 * txDelay
+        loRaDriver.write(format("%.2u",txDelay) + stringToSend + newLineChar.tochar())
         loRaDriver.flush(); // wait until write done
-        server.log(stringToSend + " sent to LoRa")
+        //server.log(stringToSend + " sent to LoRa with " + actualTxDelay + " ms delay")
     }
 
 //////////////////////  RUN TIME EVENT REGISTRATION  //////////////////////////
@@ -505,7 +507,7 @@ class LoRa {
     function receivedAgentInterest(iTable) {
         local aInterest = Interest()
         aInterest.fromTable(iTable)
-        server.log(aInterest.toString() + " received from agent")
+        //server.log(aInterest.toString() + " received from agent")
         aFace.processInterest("agent", aInterest, thisFleetLink, aLoRa)
     }
 
@@ -525,7 +527,7 @@ class LoRa {
         if (reason != SERVER_CONNECTED) {
             imp.wakeup(300, reconnect)             // Attempt to reconnect in 5 minutes' time
         } else {
-            server.log("Device reconnected");
+            //server.log("Device reconnected");
         }
     }
 
@@ -597,4 +599,11 @@ class LoRa {
             i++
         }
         return (uchCRCLo << 8 | uchCRCHi) ;
+    }
+
+
+    function irand(max) {
+        // Generate a pseudo-random integer between 0 and max
+        local roll = (1.0 * math.rand() / RAND_MAX) * (max + 1);
+        return roll.tointeger();
     }

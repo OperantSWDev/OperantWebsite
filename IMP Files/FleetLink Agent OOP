@@ -15,7 +15,7 @@
 
 class Interest {
 
-    static lifetime = 20 // global lifetime of interests in seconds
+    static lifetime = 15 // global lifetime of interests in seconds
     static type = "i"
     name = array(10, null) // up to 10 name components
     nonce = null // random number to identify interest unambiguously
@@ -146,7 +146,7 @@ class AgentFace {
                 iContext.send(200, { "returnData" : itemToSend });     // send the received data as a string to the saved context
             break
             default:
-                server.log("error: unrecognized transport");
+               // server.log("error: unrecognized transport");
         }
     }
 }
@@ -197,7 +197,7 @@ class Data {
 
 class FleetLink {
 
-    settings = {position = {latitude = 38, longitude = -122}, serialNumber = "A", deviceOnline = null}
+    settings = {position = {latitude = 38, longitude = -122}, serialNumber = "D", deviceOnline = null}
 
     function saveToServer() {
         local err = server.save(settings);

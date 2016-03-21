@@ -37,8 +37,17 @@
                 'macAddress': '690a2732',
                 'agentURL': '/Bti2MjZSPH-V',
                 'onlineStatus': true,
-                'position' : {lat: 38.4934, lon: -122.7135}
-                  }
+                'position' : {lat: 38.491, lon: -122.7135}
+              } ,
+              4: {
+                'serialNumber': 'D',
+                'macAddress': '6904f367',
+                'agentURL': '/7tb6u_BFviM6',
+                'onlineStatus': true,
+                'position' : {lat: 38.492, lon: -122.717}
+              }
+
+
         };
 
         var interestPacket = {
@@ -120,7 +129,7 @@
            data: JSON.stringify(interestPacket), // convert interest packet string to JSON
            type: 'POST',
            success : function(response) {
-               document.getElementById("expressInterestPacket").disabled = false; // re-enable the Go button
+               //document.getElementById("expressInterestPacket").disabled = false; // re-enable the Go button
                  if ('returnData' in response) {
                    var dataTable = JSON.parse(response.returnData);
                     //console.log(dataTable);
@@ -128,12 +137,14 @@
 
                     traceRoute(dataTable.trace); //display the route trace
                     new Audio("img/smallBell2.wav").play();  // sound chime to indicate successful data packet reception
+                    setTimeout(function(){document.getElementById("expressInterestPacket").disabled = false;}, 10000 );
                   }
             },
            error : function(jqXHR, textStatus, err) {
-               document.getElementById("expressInterestPacket").disabled = false;
+
                var errorResponse = jqXHR.status + ' ' + textStatus + ': ' + err + ' - ' + jqXHR.responseText;
                document.getElementById("returnedDataPacket").textContent = errorResponse;
+               setTimeout(function(){document.getElementById("expressInterestPacket").disabled = false;}, 10000 );
            }
          });
        }

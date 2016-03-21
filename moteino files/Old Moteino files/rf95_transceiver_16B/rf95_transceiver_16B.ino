@@ -108,17 +108,17 @@
         }
     }
     Serial.println("Serial1 buffer initialization complete ");   
-  
+
   }
 
 
-  void loop() {  
+  void loop() {
   
     // --------------------------             
     // block 10 ms and wait for LoRa reception..if none, go around main loop again
     // might need to tweak this wait.  It seems necessary to have  a wait, but you don't
     // want to let Imp RX serial buffer fill up and miss anything either
-        if (rf95.waitAvailableTimeout(10))   {  
+        if (rf95.waitAvailableTimeout(100))   {  
           
             if (rf95.recv(loRaRxPacket, &loRaRxPacketLength)) {
                          
@@ -147,11 +147,11 @@
                  
                 if (messageToImpComplete) {  // If complete, send message to Imp
                     Serial1.write((char*)messageToImp); // send the LoRa reception to IMP
-                    /*
+                    
                     //debug printing
                     Serial.print("Message sent to Imp = "); // echo for debug
                     Serial.println((char*)messageToImp); // send the LoRa reception to IMP
-                    */
+                    
                     clearMessageToImp(); 
                 }
                 
@@ -162,7 +162,7 @@
         // if the LoRa RX timer has expired (which means there hasn't been a LoRa reception recently, 
         // go check the Serial1 buffer to seee if Imp is sending things     
         
- 
+       
         long  currentRxTimer =  millis() - loRaRxTimer;
 
          
@@ -187,12 +187,12 @@
                 // if packet is complete (either 16B long or terminated with /N character)
                 // then send it out via LoRa
                     if (loRaTxPacketPointer >= LORA_PAYLOAD_LENGTH || impRxByte == 10) {
-                      /*
+                      
                       //debug printing
                       Serial.println();
                       Serial.print("ready to send LoRa packet ");
                       Serial.println((char*)loRaTxPacket ); 
-                      */
+                      
                         digitalWrite(LED,HIGH);
                         rf95.send(loRaTxPacket, loRaTxPacketLength); // off to the radio!
                         rf95.waitPacketSent(); // block until complete
@@ -217,14 +217,14 @@
                 //Serial.println("clearing loRa TX buffer");   
           }
       
-      
+
       
       clearMessageToImp(); // clear the Imp buffer because it's stale
       
       
       Blink(LED,3);
 
-   }
+   }       
   }
 
 
