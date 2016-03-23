@@ -136,6 +136,8 @@ bool RH_RF95::init()
     return true;
 }
 
+
+
 // C++ level interrupt handler for this instance
 // LORA is unusual in that it has several interrupt lines, and not a single, combined one.
 // On MiniWirelessLoRa, only one of the several interrupt lines (DI0) from the RFM95 is usefuly
@@ -145,6 +147,29 @@ void RH_RF95::handleInterrupt()
 {
     // Read the interrupt register
     uint8_t irq_flags = spiRead(RH_RF95_REG_12_IRQ_FLAGS);
+
+
+
+
+    // RK change
+    // on CAD Done interrupt, comes here
+    if (_mode == RHModeCAD && (irq_flags & RH_RF95_CAD_DONE))
+    {
+      // trying to read next packet after CAD
+        if (_mode == RHModeCAD && (irq_flags  & RH_RF95_CAD_DETECTED)) // check CAD Detected bit
+        {
+          Serial.print(">>>>> CAD");
+          Serial.println(millis());
+          _cadDetectFlag = true; // set global CAD detected flag
+          spiWrite(RH_RF95_REG_12_IRQ_FLAGS, 0xFF); // clear the IRQ flags
+          }
+          setModeRx(); // back to Idle mode
+    }
+    // end RK change
+
+
+
+
     if (_mode == RHModeRx && irq_flags & (RH_RF95_RX_TIMEOUT | RH_RF95_PAYLOAD_CRC_ERROR))
     {
 	_rxBad++;
@@ -175,26 +200,6 @@ void RH_RF95::handleInterrupt()
 	_txGood++;
 	setModeIdle();
     }
-
-
-
-    // RK change
-    // on CAD Done interrupt, comes here
-    else if (_mode == RHModeCAD && (irq_flags & RH_RF95_CAD_DONE))
-    {
-        if (_mode == RHModeCAD && (irq_flags  & RH_RF95_CAD_DETECTED)) // check CAD Detected bit
-        {
-          _cadDetectFlag = true; // set global CAD detected flag
-          spiWrite(RH_RF95_REG_12_IRQ_FLAGS, 0xFF); // clear the IRQ flags
-          }
-        setModeIdle(); // back to Idle mode
-        // for this FleetLink applciation, once we detect a CAD Done, we don't want to go to RX mode and get confusing apckets
-    }
-    // end RK change
-
-
-
-
 
     spiWrite(RH_RF95_REG_12_IRQ_FLAGS, 0xff); // Clear all IRQ flags
 }
@@ -315,26 +320,28 @@ bool RH_RF95::sendIfNoCad(const uint8_t* data, uint8_t len, int txDelay)
     unsigned long startTime = millis(); // this time marker used to test when the user specified TX delay is over
     unsigned long channelClearTime = millis(); // this time used to determine when channel has been clear long enough to returns
     unsigned long channelClearTimeout = 200; // if channel is clear this long, return to calling function
-    // I tried different values for this..200 ms seems safe, the CAD check loop is about 30 ms at this bit rate
+    // I tried different values for this..200 ms seems safe, the CAD check loop is about 30 ms at 300 Baud (one symbol)
     unsigned long txTimeout = 3000;  // give up no matter what after 3 seconds
     bool txCanceled = false;
 
-    Serial.print("----- START DELAY ");
+    Serial.print("----- START");
     Serial.println(startTime);
 
-    while (((millis() - startTime) < txDelay || (millis() - channelClearTime) < channelClearTimeout) && (millis() - startTime < txTimeout))
-    // logic is: 1) check CAD at least as long as user specified TX delay.  If CAD is detected, keep checking CAD until it's clear at least 50 ms
+    while ((millis() - startTime) < txDelay && (millis() - startTime < txTimeout)) {
+    //while (((millis() - startTime) < txDelay || (millis() - channelClearTime) < channelClearTimeout) && (millis() - startTime < txTimeout))
+    // logic is: 1) check CAD at least as long as user specified TX delay.  If CAD is detected, keep checking CAD until it's clear at least 200 ms
     // Bailout after 3 seconds
-    {
-        // If CAD Detect occurs, the TX is canceled, but we don;t want to return form this function until the channel is clear
+
+        // If CAD Detect occurs, the TX is canceled, but we don't want to return form this function until the channel is clear
         setModeCAD();
         if (_cadDetectFlag) {
           txCanceled = true;
           //Serial.print("xxxxx TX CANCELED");
           //Serial.println(millis());
-          channelClearTime = millis(); // reset channel clear timer
+          //channelClearTime = millis(); // reset channel clear timer
           _cadDetectFlag = false; // reset flag and check CAD again
           YIELD;  // not sure if this yield works on my platform?
+          return false;
           }
 
     }  // check CAD again
@@ -354,12 +361,12 @@ bool RH_RF95::sendIfNoCad(const uint8_t* data, uint8_t len, int txDelay)
 
         setModeTx(); // Start the transmitter
         // when Tx is done, interruptHandler will fire and radio mode will return to STANDBY
-        Serial.print(">>>>> TX COMPLETE");
+        Serial.print(">>>>> COMPLETE");
         Serial.println(millis());
         Serial.print(" ");
         return true;
     } else {
-        Serial.print("xxxxx CAD, CHANNEL NOW CLEAR ");
+        Serial.print("xxxxx CLEAR ");
         Serial.println(millis());
         Serial.print(" ");
         return false;

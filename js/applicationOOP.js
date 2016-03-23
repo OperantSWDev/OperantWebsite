@@ -8,7 +8,7 @@
 
 
     var mapFleetLink;
-    var myLatLng = {lat: 38.492, lng: -122.718};
+    var myLatLng = {lat: 38.491, lng: -122.718};
     var routePath;
     var routeCoordinates = [];
     var targetCoordinates;
@@ -45,14 +45,20 @@
                 'agentURL': '/7tb6u_BFviM6',
                 'onlineStatus': true,
                 'position' : {lat: 38.492, lon: -122.717}
+              },
+              5: {
+                'serialNumber': 'E',
+                'macAddress': '690a24e3',
+                'agentURL': '/4rEw6i2TGCMO',
+                'onlineStatus': true,
+                'position' : {lat: 38.489, lon: -122.716}
               }
-
 
         };
 
         var interestPacket = {
               'type': "i",
-              'name' : [null,null,null,null,null,null,null,null,null,null,],
+              'name' : [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
               'nonce' : 987,
               'trace' : "w"
               }
@@ -137,14 +143,14 @@
 
                     traceRoute(dataTable.trace); //display the route trace
                     new Audio("img/smallBell2.wav").play();  // sound chime to indicate successful data packet reception
-                    setTimeout(function(){document.getElementById("expressInterestPacket").disabled = false;}, 7000 );
+                    setTimeout(function(){document.getElementById("expressInterestPacket").disabled = false;}, 13000 );
                   }
             },
            error : function(jqXHR, textStatus, err) {
 
                var errorResponse = jqXHR.status + ' ' + textStatus + ': ' + err + ' - ' + jqXHR.responseText;
                document.getElementById("returnedDataPacket").textContent = errorResponse;
-               setTimeout(function(){document.getElementById("expressInterestPacket").disabled = false;}, 7000 );
+               setTimeout(function(){document.getElementById("expressInterestPacket").disabled = false;}, 13000 );
            }
          });
        }

@@ -38,7 +38,7 @@
    
     // A timer is set when a LoRa packet is received, when it times out, we assume reception is complete\
     unsigned long loRaRxTimer; //in ms, we use 'unsigned long' because ms timer is unsigned long integer
-    unsigned long loRaRxTimeout = 300; // max amount of time to assume a LoRa RX will take to complete between packets and processing
+    unsigned long loRaRxTimeout = 30; // max amount of time to assume a LoRa RX will take to complete between packets and processing
     
 
   ////////////////////////////////////////////    
@@ -59,9 +59,9 @@
  
     // A timer is set when a Serial1 byte is received from Imp, if it timesout, we assume the Imp is done and send the packet
     unsigned long serial1RxTimer; //in ms, we use 'unsigned long' because ms timer is unsigned long integer
-    unsigned long serial1RxTimeout = 300; // max amount of time to assume the Imp will take to send 16B packet
+    unsigned long serial1RxTimeout = 10; // max amount of time to assume the Imp will take to send 16B packet
    
-    int loRaTxDelay = 0; // desired delay in 10 millisecond quantum steps, 0 to 2550 ms
+    int loRaTxDelay = 0; // desired delay
     unsigned long loRaTxDelayTimer = 0;
     
     
@@ -96,7 +96,7 @@
     rf95.spiWrite(RH_RF95_REG_0C_LNA, 0x03); // LNA settings: Boost on, 150% LNA current
     rf95.spiWrite(RH_RF95_REG_1D_MODEM_CONFIG1, 0x82); //set BW to 250 kHz, Coding Rate to 4/5, Explicit Header ON
     rf95.spiWrite(RH_RF95_REG_1E_MODEM_CONFIG2, 0xA4); // set SF at 10, TXContinous = Normal, CRC ON                 <===!! DEVELOPMENT
-    rf95.spiWrite(RH_RF95_REG_21_PREAMBLE_LSB, 0x08); // Preamble Length LSB (+ 4.25 Symbols)
+    rf95.spiWrite(RH_RF95_REG_21_PREAMBLE_LSB, 0x0A); // Preamble Length LSB (+ 4.25 Symbols)       Default = 8                 <===!! DEVELOPMENT
     rf95.spiWrite(RH_RF95_REG_22_PAYLOAD_LENGTH, 0x10); // Payload length in bytes. Set at 16B by definition 
     rf95.spiWrite(RH_RF95_REG_26_MODEM_CONFIG3, 0x04); // LNA gain set by the internal AGC loop
     rf95.setTxPower(3); // set to +3 for testing, +15 fpr general data use;  +20 for range test use                  <===!! DEVELOPMENT
@@ -191,16 +191,16 @@
 
               if (Serial1.available()) {            
                     //Serial.print("byte at serial1 port..");
-                   // Serial.println(millis());
+                    //Serial.println(millis());
                     impRxByte = Serial1.read(); // get one byte from serial port
                     
-                    /*
+                    
                     //debug printing
-                    Serial.print(impRxByte);
-                    Serial.print(" pointer ");
-                    Serial.print(messageToLoRaPointer);
-                    Serial.println();
-                    */
+                    //Serial.print(impRxByte);
+                    //Serial.print(" pointer ");
+                    //Serial.print(messageToLoRaPointer);
+                    //Serial.println();
+                    
                     
                     // add MessageToLoRa
                     // add received byte to message buffer to send to LoRa
@@ -257,53 +257,69 @@
                                   loRaTxPacket[j] = loRaTxPacketArray[i][j]; // load the TX packet buffer
                                   //Serial.println(loRaTxPacket[j]);
                               }    
-      
+                              /*
                               //debug printing
                               Serial.print("LoRa Packet Length= ");
                               Serial.println(sizeof(loRaTxPacket));
                               Serial.println(millis());
-                              
+                              */
                               
                               digitalWrite(LED,HIGH);
 
                               if (i == 0) { // the first packet through
                                  if(rf95.sendIfNoCad(loRaTxPacket, loRaTxPacketLength, loRaTxDelay)) {; // did we send first packet with specified delay?
                                     rf95.waitPacketSent(); // block until complete
+                                    
+                                    
                                     Serial.print("LoRa packet [");
                                     Serial.print(i);
                                     Serial.print("] sent: ") ; 
+                                   
                                     for (int n=0; n<sizeof(loRaTxPacket); n++) {
                                       Serial.print((char)loRaTxPacket[n]); 
                                     }
-                                      Serial.print("------");
+                                      Serial.print("TX0 ");
                                       Serial.println(millis()); 
+                                      
+                                      
                                  } else {
-                                   Serial.print("TX canceled");
-                                   Serial.print("------");
+                                   Serial.print("CAD ");
                                    Serial.println(millis()); 
                                    txCanceledFlag = true;
+                                   
+                                   /*
+                                   Serial.print("------");
+                                   Serial.println(millis()); */
+
+                                   
+                                   
                                  }
                               
                               } else { // send 2nd through 4th packets immediately unless the whole transmission was canceled
                                    if (!txCanceledFlag) {
                                      rf95.send(loRaTxPacket, loRaTxPacketLength); // off to the radio
                                      rf95.waitPacketSent(); // block until complete
+                                     
+                                     /*
                                      Serial.print("LoRa packet [");
                                      Serial.print(i);
                                      Serial.print("] sent: ") ; 
                                      for (int n=0; n<sizeof(loRaTxPacket); n++) {
                                        Serial.print((char)loRaTxPacket[n]); 
                                      }
-                                     Serial.print("------");
+                                     */
+                                     Serial.print("TXN ");
                                      Serial.println(millis()); 
+                                     
                                    }
                               }
+                              //rf95.setModeRx(); // return to RX mode as we exit the Serial read loop    
                               digitalWrite(LED,LOW);
                               
                         }
                         
                         // done with transmission, clear everything
-                        clearAll(); 
+                        //clearAll(); 
                         
                     }  else {
                         messageToLoRaPointer++;  // if we're not done getting bytes, increment the pointer
@@ -312,7 +328,9 @@
               } 
           
           }
-          rf95.setModeRx(); // return to RX mode as we exit the Serial read loop    
+          
+          Serial.print("Exit ");
+          Serial.println(millis()); 
       }
       
       
@@ -335,7 +353,7 @@
     clearloRaTxPacket();
     clearloRaTxPacketArray();
     clearMessageToLoRa();
-    Serial.println("clear all");
+    //Serial.println("clear all");
   }
   
   

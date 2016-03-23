@@ -12,11 +12,11 @@ class Interest {
 
 
     static type = "i"
-    name = array(10, null) // up to 10 name components
+    name = array(20, null) // up to 20 name components
     nonce = null // random number to identify interest unambiguously
     trace = null // in a wireless network we have to track who sent the interest within the interest itself
 
-    static lifetime = 15 // global lifetime of interests in seconds
+    static lifetime = 10 // global lifetime of interests in seconds
 
     function fromTable (iTable) {
         name = iTable.name
@@ -87,7 +87,7 @@ class DeviceFace {
         local thisEntryId = nextEntryId
         if (nextEntryId < pendingInterestTable.len()-1) {
             nextEntryId++;
-            //server.log("incrementing nextEntryId to " + nextEntryId)
+            server.log("incrementing nextEntryId to " + nextEntryId)
         } else {
             nextEntryId = 0; // start again at 0 if you've filled up the PIT
         }
@@ -99,22 +99,25 @@ class DeviceFace {
 
     function processInterest(interface, iInterest, iFleetLink, iLoRa) {
         if (findMatchingPIT(iInterest) != null) {
-            //server.log("this is an existing Interest and processing will terminate")
+            server.log("this is an existing Interest and processing will terminate")
         } else {  // It's a new interest..here we go!
 
 
             //////////////// DEVELOPMENT ONLY ///////////////////////////////////
             // Units A and C should ignore direct communications, they must route through B
                 if ((iFleetLink.settings.serialNumber == "C" && iInterest.trace.slice(iInterest.trace.len()-1) == "A") ||
-                (iFleetLink.settings.serialNumber == "A" && iInterest.trace.slice(iInterest.trace.len()-1) == "C")) {
+                (iFleetLink.settings.serialNumber == "A" && iInterest.trace.slice(iInterest.trace.len()-1) == "C")
+                // || (iFleetLink.settings.serialNumber == "B" && iInterest.trace.slice(iInterest.trace.len()-1) == "C") ||
+                // (iFleetLink.settings.serialNumber == "C" && iInterest.trace.slice(iInterest.trace.len()-1) == "B")
+                ) {
                    server.log("Unit " + iFleetLink.settings.serialNumber + " is ignoring Unit " + iInterest.trace)
                 } else {
             //////////////// DEVELOPMENT ONLY ///////////////////////////////////
 
 
                 local thisEntryId = addToPIT(interface, null, iInterest) // add it to the PIT
-                //server.log("adding new Interest at PIT[" + thisEntryId +"]" )
-                //server.log("intended for unit " + iInterest.name[1] + " this is unit " + iFleetLink.settings.serialNumber)
+                server.log("adding new Interest at PIT[" + thisEntryId +"]" )
+                server.log("intended for unit " + iInterest.name[1] + " this is unit " + iFleetLink.settings.serialNumber)
 
                 if (iInterest.name[0] == "m" && iInterest.name[1] == iFleetLink.settings.serialNumber) {  // is this a local Modbus query?
                     server.log("this is a local modbus query ")
@@ -141,10 +144,13 @@ class DeviceFace {
 
             //////////////// DEVELOPMENT ONLY ///////////////////////////////////
             // Units A and C should ignore direct communications, they must route through B
-                if ((iFleetLink.settings.serialNumber == "C" && mData.trace.slice(mData.trace.len()-1) == "A") ||
-                (iFleetLink.settings.serialNumber == "A" && mData.trace.slice(mData.trace.len()-1) == "C")) {
-                   //server.log("Unit " + iFleetLink.settings.serialNumber + " is ignoring Unit " + mData.trace)
-                } else {
+            if ((iFleetLink.settings.serialNumber == "C" && mData.trace.slice(mData.trace.len()-1) == "A") ||
+                (iFleetLink.settings.serialNumber == "A" && mData.trace.slice(mData.trace.len()-1) == "C"))  {
+                   server.log("Unit " + iFleetLink.settings.serialNumber + " is ignoring Unit " + mData.trace)
+
+                // || (iFleetLink.settings.serialNumber == "B" && mData.trace.slice(mData.trace.len()-1) == "C") ||
+                // (iFleetLink.settings.serialNumber == "C" && mData.trace.slice(mData.trace.len()-1) == "B"))
+            } else {
             //////////////// DEVELOPMENT ONLY ///////////////////////////////////
 
 
@@ -154,13 +160,13 @@ class DeviceFace {
                         if (mData.trace == "w") { mData.trace = ""} // remove the "w" to save space
                         mData.trace += iFleetLink.settings.serialNumber // add this units serial number to the trace
                         agent.send("deviceToAgent", mData.toTable())  //send the table version of the item to the agent
-                        //server.log(mData.toString() + " returned to agent")
+                        server.log(mData.toString() + " returned to agent")
                     break
                     case "loRa":
                         iLoRa.sendWithDelay(mData, iFleetLink)
                     break
                     default:
-                       // server.log("unrecognized interface from PIT entry")
+                        //server.log("unrecognized interface from PIT entry")
                     }
                     pendingInterestTable[matchingPITEntryId].satisfied = true // mark it as satisfied so you won't keep forwarding it
                 }
@@ -168,7 +174,7 @@ class DeviceFace {
 
 
         } else {  // there's no matchingPIT or it's an unsatisfied entry, so discard it
-            //server.log("no unsatisfied PIT entry and processing will terminate")
+            server.log("no unsatisfied PIT entry and processing will terminate")
         }
     }
 
@@ -183,7 +189,7 @@ class DeviceFace {
             if (pendingInterestTable[i].rawin("timer")) { // if there is a timer entry
             //server.log("checking PIT[" + i + "]for expired entries..." );
                 if (pendingInterestTable[i].timer < time()) {
-                    //server.log("PIT[" + i + "] has an expired entry" );
+                    server.log("PIT[" + i + "] has an expired entry" );
                     pendingInterestTable[i].clear()
                     //server.log(" and was cleared")
                 }
@@ -194,39 +200,33 @@ class DeviceFace {
 
     function findMatchingPIT (dObject){
         local matchingPITIndex = null
+        local matchFlag = false   // set a boolean flag
         for (local i=0; i<pendingInterestTable.len(); i++) {  // look through every interest object in the PIT
-            local matchFlag = true   // set a boolean flag that the string match
+            matchFlag = true // if there are any entries to check, start with assumption there is a match....
             if (pendingInterestTable[i].rawin("interest") ){ // can't check without a interest entry
-                 //server.log("checking PIT Entry = " + i)
-                 if (pendingInterestTable[i].interest.name.len() != dObject.name.len()) { // check if the Names have the same number of components, if not they are  not equal
-                     matchFlag = false;
-                     //server.log("no PIT match because number of name components not equal")
-                 } else {  // if they ARE the same length, compare each name component
-                    for (local j=0; j<10; j++) {
-                       // if (pendingInterestTable[i].interest.name[j] != null) {
-                            if (pendingInterestTable[i].interest.name[j] != dObject.name[j]) {
-                                //server.log(pendingInterestTable[i].interest.name[j] + " equals? " +dObject.name[j])
-                                   // server.log("match failed at name " + j)
-                                     matchFlag = false // if any of the name components don't match, clear the flag
-                        //    }
+                //server.log("checking PIT Entry = " + i)
+                for (local j=0; j<10; j++) {
+                    if (pendingInterestTable[i].interest.name[j] != dObject.name[j]) {
+                        server.log(pendingInterestTable[i].interest.name[j] + " equals? " +dObject.name[j])
+                        //server.log("match failed at name " + j)
+                        matchFlag = false // if any of the name components don't match, clear the flag
                         }
-                        // server.log("checking name component " + j + " with values " + pendingInterestTable[i].interest.name[j] + " and " + dObject.name[j]);
+                        //server.log("checking name component " + j + " with values " + pendingInterestTable[i].interest.name[j] + " and " + dObject.name[j]);
                     }
-
-                    // server.log("checking PIT entry nonce " + pendingInterestTable[i].interest.nonce + " equals object nonce " + dObject.nonce)
+                    server.log("checking PIT entry nonce " + pendingInterestTable[i].interest.nonce + " equals object nonce " + dObject.nonce)
                     if (pendingInterestTable[i].interest.nonce.tostring() != dObject.nonce.tostring()) {  // the nonces must match as well, seems like one was an integer?
-                       //server.log("match failed at nonce")
+                        //server.log("match failed at nonce")
                         matchFlag = false
                     }
-                 }
-                if (matchFlag == true) {
-                    matchingPITIndex = i
-                } else {
-                    matchingPITIndex = null
-                    //server.log("no matching PIT found")
-                }
+                    if (matchFlag == true) {
+                        matchingPITIndex = i
+                        //server.log("Matching PIT found at index " + i)
+                    } else {
+                        matchingPITIndex = null
+                        //server.log("no matching PIT found")
+                    }
             }
-         }
+        }
     return matchingPITIndex // send back the index of the matching PIT entry
     }
 
@@ -237,7 +237,7 @@ class DeviceFace {
 class Data {
 
     static type = "d"
-    name = array(10, null)
+    name = array(20, null)
     nonce = null
     contents = null
     trace = null // in a wireless network we have to track who sent the interest within the interest itself
@@ -370,17 +370,19 @@ class Modbus {
                     dataEverReceivedFlag = true;  // set true when first actual data has been received by UART
                 }
                 loopCounter++;
-                 //server.log("read loop " + loopCounter + " data= " + modbusByte + " data rx flag= " + dataEverReceivedFlag);
-            } while(loopCounter <= 500); // going to block here for 500x reads
+                // server.log("read loop " + loopCounter + " data= " + modbusByte + " data rx flag= " + dataEverReceivedFlag);
+            } while(loopCounter <= 1000); // going to block here for 100x reads
             // it would have been better to use a wakeup timer to cancel the read loop, but I couldn't make it work!
         return  modbusReadString;
     }
 
     function query(qInterest) {
         local wString =  qInterest.toModbusCommand(qInterest)
-       // server.log(wString)
+        server.log("Modbus write " + wString + " at " + hardware.millis())
         writeString(wString)
+        server.log("Modbus write complete at " + hardware.millis())
         local rString = readString()
+        server.log("Modbus read " + rString + " at " + hardware.millis())
         local qData = Data()
         qData.fromModbusResponse(qInterest, rString)
         return qData
@@ -404,18 +406,19 @@ class LoRa {
                 if (rByte != -1 && rByte != 10) {
                     rString += rByte.tochar(); // don't store -1's indicating empty UART FIFO or 10, which is termination /N
                     dataEverReceivedFlag = true;  // set true when first actual data has been received by UART
-                    loopCtr = 0; // reset the loop counter, we want to quit read loop when we've received 20000x  -1's in a row with no data
+                    loopCtr = 0; // reset the loop counter, we want to quit read loop when we've received N  -1's in a row with no data
                 }
                 loopCtr++;
 
-            } while(loopCtr <= 500); // going to block here for 50 reads
-                //server.log("LoRa reception of " + rString + " of size " + rString.len())
+            } while(loopCtr <= 100); // going to block here for 50 reads
+                server.log("LoRa reception of " + rString + " of size " + rString.len())
 
         return rString
     }
 
     function sendWithDelay(objectToSend, iFleetLink) {
         local txDelay
+        //server.log("entering sendWithDelay at " + hardware.millis())
         // if this object was sourced from this unit then send immediately
         // this is the case for Interests that just came from the agent (first case)
         // or Datas that were generated by the local Modbus (2nd case)
@@ -423,19 +426,20 @@ class LoRa {
         //if (objectToSend.trace == "w" || objectToSend.name[1] == iFleetLink.settings.serialNumber) {
         if (objectToSend.trace == "w") {
             objectToSend.trace = iFleetLink.settings.serialNumber // replace the "w" with this units serial number in the trace
-            //server.log("this is new agent interest, transmitting in 50 ms")
+            server.log("this is new agent interest, transmitting in 50 ms")
             txDelay = 1
             sendLoRa(objectToSend, iFleetLink, txDelay)
         } else if (objectToSend.name[1] == iFleetLink.settings.serialNumber) {
             objectToSend.trace += iFleetLink.settings.serialNumber // add this units serial number to the trace
-            //server.log("this is my local data, transmitting in 50 ms")
+            server.log("this is my local data, transmitting in 50 ms")
             txDelay = 1
             sendLoRa(objectToSend, iFleetLink, txDelay)
-        } else {  // or wait an entire transmit period to forward a non local object
+        } else {  // or wait a random amount of time to forward a non local object
             objectToSend.trace += iFleetLink.settings.serialNumber // add this units serial number to the trace
-            txDelay = 3 + irand(16) // random number between 3 and 19
-             server.log("forward w/ delay " + 50*txDelay)
-            imp.wakeup(2, function() {sendLoRa(objectToSend, iFleetLink, txDelay);})
+            txDelay = 4 + irand(15) // random numbertime delay
+            server.log("forward w/ delay " + 50*txDelay)
+            sendLoRa(objectToSend, iFleetLink, txDelay)
+
         }
     }
 
@@ -462,24 +466,29 @@ class LoRa {
     local aLoRa = LoRa()
     function loRaAvailable() {
         local lString = aLoRa.readString()
-        //server.log(lString  + " received from LoRa" )
+        //server.log(lString  + " received from LoRa at " + hardware.millis() )
 
-            switch (lString.slice(0,1)){
-            case "i":
-                //server.log("LoRa received an Interest")
-                local lInterest = Interest()
-                lInterest.fromString(lString)
-                aFace.processInterest("loRa", lInterest, thisFleetLink, aLoRa)
+            if (lString.len() > 0) {
+                switch (lString.slice(0,1)){
+                case "i":
+                    server.log("LoRa received an Interest")
+                    local lInterest = Interest()
+                    lInterest.fromString(lString)
+                    aFace.processInterest("loRa", lInterest, thisFleetLink, aLoRa)
 
-            break
-            case "d":
-                //server.log("LoRa received a Data " + lString)
-                local lData = Data()
-                lData.fromString(lString)
-                aFace.processData(lData, thisFleetLink, aLoRa)
-            break
-            default:
-                //server.log("unknown transmission received from LoRa: " + lString)
+                break
+                case "d":
+                    server.log("LoRa received a Data " + lString)
+                    local lData = Data()
+                    lData.fromString(lString)
+                    aFace.processData(lData, thisFleetLink, aLoRa)
+                break
+                default:
+                    server.log("unknown transmission received from LoRa: " + lString)
+                }
+            } else {
+                server.log("zero length transmission received from LoRa: " + lString)
+
             }
 
     }
@@ -494,7 +503,7 @@ class LoRa {
         local actualTxDelay = 50 * txDelay
         loRaDriver.write(format("%.2u",txDelay) + stringToSend + newLineChar.tochar())
         loRaDriver.flush(); // wait until write done
-        //server.log(stringToSend + " sent to LoRa with " + actualTxDelay + " ms delay")
+        server.log(stringToSend + " sent to LoRa with " + actualTxDelay + " ms delay at " + hardware.millis())
     }
 
 //////////////////////  RUN TIME EVENT REGISTRATION  //////////////////////////
@@ -544,7 +553,7 @@ class LoRa {
 
     function checkExpiredPIT() {
         aFace.cleanPIT(null)
-        imp.wakeup(5, checkExpiredPIT) ;   // remove expire interests from PIT
+        imp.wakeup(1, checkExpiredPIT) ;   // remove expire interests from PIT
     }
 
      checkExpiredPIT(); // start PIT cleaner running

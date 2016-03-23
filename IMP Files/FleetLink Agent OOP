@@ -17,7 +17,7 @@ class Interest {
 
     static lifetime = 15 // global lifetime of interests in seconds
     static type = "i"
-    name = array(10, null) // up to 10 name components
+    name = array(20, null) // up to 20 name components
     nonce = null // random number to identify interest unambiguously
     trace = null // in a wireless network we have to track who sent the interest within the interest itself
 
@@ -155,7 +155,7 @@ class AgentFace {
 class Data {
 
     static type = "d"
-    name = array(10, null)
+    name = array(20, null)
     nonce = null
     contents = null
     trace = null // in a wireless network we have to track who sent the interest within the interest itself
@@ -197,7 +197,7 @@ class Data {
 
 class FleetLink {
 
-    settings = {position = {latitude = 38, longitude = -122}, serialNumber = "D", deviceOnline = null}
+    settings = {position = {latitude = 38, longitude = -122}, serialNumber = "E", deviceOnline = null}
 
     function saveToServer() {
         local err = server.save(settings);
