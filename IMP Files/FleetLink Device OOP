@@ -4,8 +4,24 @@
 
 class FleetLink {
 
-    settings = {position = {latitude = null, longitude = null}, serialNumber = null, deviceOnline = null}
+    // space for a fleet of 20 units
+    settings = array(20, {"serialNumber" : null, "macAddress" : null, "agentURL" : null, "onlineStatus" : null, "position" : {"lat" : null, "lon" : null}})
+    thisUnit = null
+
+    //settings = {position = {latitude = null, longitude = null}, serialNumber = null, deviceOnline = null}
+
+    function initialize() {
+        settings[0] = {"serialNumber" : "A", "macAddress" : "0c2a6909795a",  "position" : {"lat" : 38.490, "lon" : -122.7226}}
+        settings[1] = {"serialNumber" : "B", "macAddress" : "0c2a6908cd7e",  "position" : {"lat" : 38.4898, "lon" :  -122.7181}}
+        settings[2] = {"serialNumber" : "C", "macAddress" : "0c2a690a2732",  "position" : {"lat" : 38.491, "lon" :  -122.7135}}
+        settings[3] = {"serialNumber" : "D", "macAddress" : "0c2a6904f367",  "position" : {"lat" : 38.492, "lon" :  -122.717}}
+        settings[4] = {"serialNumber" : "E", "macAddress" : "0c2a690a24e3",  "position" : {"lat" : 38.489, "lon" :  -122.716}}
+        settings[5] = {"serialNumber" : "F", "macAddress" : null,  "position" : {"lat" : 38.495, "lon" :  -122.706}}
+    }
+
+
 }
+
 
 
 class Interest {
@@ -104,22 +120,22 @@ class DeviceFace {
 
 
             //////////////// DEVELOPMENT ONLY ///////////////////////////////////
-            // Units A and C should ignore direct communications, they must route through B
-                if ((iFleetLink.settings.serialNumber == "C" && iInterest.trace.slice(iInterest.trace.len()-1) == "A") ||
-                (iFleetLink.settings.serialNumber == "A" && iInterest.trace.slice(iInterest.trace.len()-1) == "C")
-                // || (iFleetLink.settings.serialNumber == "B" && iInterest.trace.slice(iInterest.trace.len()-1) == "C") ||
-                // (iFleetLink.settings.serialNumber == "C" && iInterest.trace.slice(iInterest.trace.len()-1) == "B")
+            // Units A and C can't hear each other; Unit F can ONLY hear C
+                if ((iFleetLink.settings[iFleetLink.thisUnit].serialNumber == "C" && iInterest.trace.slice(iInterest.trace.len()-1) == "A")  ||
+                    (iFleetLink.settings[iFleetLink.thisUnit].serialNumber == "A" && iInterest.trace.slice(iInterest.trace.len()-1) == "C")  ||
+                    (iFleetLink.settings[iFleetLink.thisUnit].serialNumber == "F" && (iInterest.trace.slice(iInterest.trace.len()-1) != "C") && (iInterest.trace.slice(iInterest.trace.len()-1) != "w"))  ||
+                    (iFleetLink.settings[iFleetLink.thisUnit].serialNumber != "C" && iInterest.trace.slice(iInterest.trace.len()-1) == "F")
                 ) {
-                   server.log("Unit " + iFleetLink.settings.serialNumber + " is ignoring Unit " + iInterest.trace)
+                   server.log("Unit " + iFleetLink.settings[iFleetLink.thisUnit].serialNumber + " is ignoring Unit " + iInterest.trace)
                 } else {
             //////////////// DEVELOPMENT ONLY ///////////////////////////////////
 
 
                 local thisEntryId = addToPIT(interface, null, iInterest) // add it to the PIT
                 server.log("adding new Interest at PIT[" + thisEntryId +"]" )
-                server.log("intended for unit " + iInterest.name[1] + " this is unit " + iFleetLink.settings.serialNumber)
+                server.log("intended for unit " + iInterest.name[1] + " this is unit " + iFleetLink.settings[iFleetLink.thisUnit].serialNumber)
 
-                if (iInterest.name[0] == "m" && iInterest.name[1] == iFleetLink.settings.serialNumber) {  // is this a local Modbus query?
+                if (iInterest.name[0] == "m" && iInterest.name[1] == iFleetLink.settings[iFleetLink.thisUnit].serialNumber) {  // is this a local Modbus query?
                     server.log("this is a local modbus query ")
                     local iModbus = Modbus()
                     iModbus.initialize()
@@ -143,13 +159,13 @@ class DeviceFace {
 
 
             //////////////// DEVELOPMENT ONLY ///////////////////////////////////
-            // Units A and C should ignore direct communications, they must route through B
-            if ((iFleetLink.settings.serialNumber == "C" && mData.trace.slice(mData.trace.len()-1) == "A") ||
-                (iFleetLink.settings.serialNumber == "A" && mData.trace.slice(mData.trace.len()-1) == "C"))  {
-                   server.log("Unit " + iFleetLink.settings.serialNumber + " is ignoring Unit " + mData.trace)
-
-                // || (iFleetLink.settings.serialNumber == "B" && mData.trace.slice(mData.trace.len()-1) == "C") ||
-                // (iFleetLink.settings.serialNumber == "C" && mData.trace.slice(mData.trace.len()-1) == "B"))
+            // Units A and C can't hear each other; Unit F can ONLY hear C
+            if ((iFleetLink.settings[iFleetLink.thisUnit].serialNumber == "C" && mData.trace.slice(mData.trace.len()-1) == "A")  ||
+                (iFleetLink.settings[iFleetLink.thisUnit].serialNumber == "A" && mData.trace.slice(mData.trace.len()-1) == "C")  ||
+                (iFleetLink.settings[iFleetLink.thisUnit].serialNumber == "F" && mData.trace.slice(mData.trace.len()-1) != "C") ||
+                (iFleetLink.settings[iFleetLink.thisUnit].serialNumber != "C" && mData.trace.slice(mData.trace.len()-1) == "F")
+            ) {
+                server.log("Unit " + iFleetLink.settings[iFleetLink.thisUnit].serialNumber + " is ignoring Unit " + mData.trace)
             } else {
             //////////////// DEVELOPMENT ONLY ///////////////////////////////////
 
@@ -158,7 +174,7 @@ class DeviceFace {
                 switch (pendingInterestTable[matchingPITEntryId].interface) {
                     case "agent":
                         if (mData.trace == "w") { mData.trace = ""} // remove the "w" to save space
-                        mData.trace += iFleetLink.settings.serialNumber // add this units serial number to the trace
+                        mData.trace += iFleetLink.settings[iFleetLink.thisUnit].serialNumber // add this units serial number to the trace
                         agent.send("deviceToAgent", mData.toTable())  //send the table version of the item to the agent
                         server.log(mData.toString() + " returned to agent")
                     break
@@ -304,7 +320,7 @@ class Data {
             //server.log("no modbus reply")
             name = dInterest.name
             nonce = dInterest.nonce
-            contents = "4E6F204D6F64627573" // ASCII for "No Modbus"
+            contents = "4E6F204D6F64627573" // ASCII for "NoModbus"
         }
     }
 }
@@ -423,19 +439,19 @@ class LoRa {
         // this is the case for Interests that just came from the agent (first case)
         // or Datas that were generated by the local Modbus (2nd case)
         //server.log("considering delay for trace= " +objectToSend.trace + " and generated by " + objectToSend.name[1])
-        //if (objectToSend.trace == "w" || objectToSend.name[1] == iFleetLink.settings.serialNumber) {
+        //if (objectToSend.trace == "w" || objectToSend.name[1] == iFleetLink.settings[iFleetLink.thisUnit].serialNumber) {
         if (objectToSend.trace == "w") {
-            objectToSend.trace = iFleetLink.settings.serialNumber // replace the "w" with this units serial number in the trace
+            objectToSend.trace = iFleetLink.settings[iFleetLink.thisUnit].serialNumber // replace the "w" with this units serial number in the trace
             server.log("this is new agent interest, transmitting in 50 ms")
             txDelay = 1
             sendLoRa(objectToSend, iFleetLink, txDelay)
-        } else if (objectToSend.name[1] == iFleetLink.settings.serialNumber) {
-            objectToSend.trace += iFleetLink.settings.serialNumber // add this units serial number to the trace
+        } else if (objectToSend.name[1] == iFleetLink.settings[iFleetLink.thisUnit].serialNumber) {
+            objectToSend.trace += iFleetLink.settings[iFleetLink.thisUnit].serialNumber // add this units serial number to the trace
             server.log("this is my local data, transmitting in 50 ms")
             txDelay = 1
             sendLoRa(objectToSend, iFleetLink, txDelay)
         } else {  // or wait a random amount of time to forward a non local object
-            objectToSend.trace += iFleetLink.settings.serialNumber // add this units serial number to the trace
+            objectToSend.trace += iFleetLink.settings[iFleetLink.thisUnit].serialNumber // add this units serial number to the trace
             txDelay = 4 + irand(15) // random numbertime delay
             server.log("forward w/ delay " + 50*txDelay)
             sendLoRa(objectToSend, iFleetLink, txDelay)
@@ -455,12 +471,18 @@ class LoRa {
     local aFace = DeviceFace() //does it need an intialize function
 
 
-    // Get the FleetLink settings in the device
-    local thisFleetLink = FleetLink()
-    function loadFleetLink(iSettings) {
-        thisFleetLink.settings = iSettings
-        //server.log("FL settings received by device, serial number is " + thisFleetLink.settings.serialNumber )
-    } // change to an initialize function for parallelism?
+    // Get the FleetLink fleet information
+    local aFleetLink = FleetLink()
+    aFleetLink.initialize();
+
+    for (local i=0; i<6; i++) {
+        if (aFleetLink.settings[i].macAddress == imp.getmacaddress()) {
+            aFleetLink.thisUnit = i
+            server.log("this is unit serial number " + aFleetLink.settings[aFleetLink.thisUnit].serialNumber + " with MAC " + aFleetLink.settings[aFleetLink.thisUnit].macAddress)
+
+        }
+    }
+
 
 
     local aLoRa = LoRa()
@@ -474,14 +496,14 @@ class LoRa {
                     server.log("LoRa received an Interest")
                     local lInterest = Interest()
                     lInterest.fromString(lString)
-                    aFace.processInterest("loRa", lInterest, thisFleetLink, aLoRa)
+                    aFace.processInterest("loRa", lInterest, aFleetLink, aLoRa)
 
                 break
                 case "d":
                     server.log("LoRa received a Data " + lString)
                     local lData = Data()
                     lData.fromString(lString)
-                    aFace.processData(lData, thisFleetLink, aLoRa)
+                    aFace.processData(lData, aFleetLink, aLoRa)
                 break
                 default:
                     server.log("unknown transmission received from LoRa: " + lString)
@@ -508,8 +530,8 @@ class LoRa {
 
 //////////////////////  RUN TIME EVENT REGISTRATION  //////////////////////////
 
-    agent.on("sendSettings", loadFleetLink)
-    agent.send("requestSettings", null) // ask for settings
+    //agent.on("sendSettings", loadFleetLink)
+    //agent.send("requestSettings", null) // ask for settings
 
 //////////////////////  AGENT COMMS HANDLER  //////////////////////////
 
@@ -517,7 +539,7 @@ class LoRa {
         local aInterest = Interest()
         aInterest.fromTable(iTable)
         //server.log(aInterest.toString() + " received from agent")
-        aFace.processInterest("agent", aInterest, thisFleetLink, aLoRa)
+        aFace.processInterest("agent", aInterest, aFleetLink, aLoRa)
     }
 
     agent.on("agentToDevice", receivedAgentInterest);

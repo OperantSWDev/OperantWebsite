@@ -8,7 +8,7 @@
 
 
     var mapFleetLink;
-    var myLatLng = {lat: 38.491, lng: -122.718};
+    var myLatLng = {lat: 38.491, lng: -122.715};
     var routePath;
     var routeCoordinates = [];
     var targetCoordinates;
@@ -20,38 +20,45 @@
     var fleetLink = {
               1: {
                 'serialNumber': 'A',  // only use last 8 digits of MAC to save packet characters
-                'macAddress': '6909795a',
+                'macAddress': '20000c26909795a',
                 'agentURL': '/Bs6cc2GgCE6w',
-                'onlineStatus': false,
+                'onlineStatus': true,
                 'position' : {lat: 38.490,lon: -122.7226}
                   },
               2: {
                 'serialNumber': 'B',
-                'macAddress': '6908cd7e',
+                'macAddress': '20000c26908cd7e',
                 'agentURL': '/LdRa4cy-o9XA',
                 'onlineStatus': true,
                 'position' : {lat: 38.4898, lon: -122.7181}
                   },
               3: {
                 'serialNumber': 'C',
-                'macAddress': '690a2732',
+                'macAddress': '20000c2690a2732',
                 'agentURL': '/Bti2MjZSPH-V',
                 'onlineStatus': true,
                 'position' : {lat: 38.491, lon: -122.7135}
               } ,
               4: {
                 'serialNumber': 'D',
-                'macAddress': '6904f367',
+                'macAddress': '20000c26904f367',
                 'agentURL': '/7tb6u_BFviM6',
                 'onlineStatus': true,
                 'position' : {lat: 38.492, lon: -122.717}
               },
               5: {
                 'serialNumber': 'E',
-                'macAddress': '690a24e3',
+                'macAddress': '20000c2690a24e3',
                 'agentURL': '/4rEw6i2TGCMO',
                 'onlineStatus': true,
                 'position' : {lat: 38.489, lon: -122.716}
+              },
+              6: {
+                'serialNumber': 'F',
+                'macAddress': '20000c2690a24e3',
+                'agentURL': '/4rEw6i2TGCMO',
+                'onlineStatus': true,
+                'position' : {lat: 38.495, lon: -122.706}
               }
 
         };
@@ -131,7 +138,7 @@
         $.ajax({
         // send the interest packet to the selected agent and expect a data packet in response
            url: baseURL + fleetLink[accessUnitKey].agentURL + '/expressInterest',
-           timeout: 20000,
+           timeout: 15000,
            data: JSON.stringify(interestPacket), // convert interest packet string to JSON
            type: 'POST',
            success : function(response) {
@@ -143,14 +150,14 @@
 
                     traceRoute(dataTable.trace); //display the route trace
                     new Audio("img/smallBell2.wav").play();  // sound chime to indicate successful data packet reception
-                    setTimeout(function(){document.getElementById("expressInterestPacket").disabled = false;}, 13000 );
+                    setTimeout(function(){document.getElementById("expressInterestPacket").disabled = false;}, 12000 );
                   }
             },
            error : function(jqXHR, textStatus, err) {
 
                var errorResponse = jqXHR.status + ' ' + textStatus + ': ' + err + ' - ' + jqXHR.responseText;
                document.getElementById("returnedDataPacket").textContent = errorResponse;
-               setTimeout(function(){document.getElementById("expressInterestPacket").disabled = false;}, 13000 );
+               setTimeout(function(){document.getElementById("expressInterestPacket").disabled = false;}, 12000 );
            }
          });
        }
@@ -266,7 +273,7 @@
       function initMap() {
         // Draw default map
           mapFleetLink = new google.maps.Map(document.getElementById('map'), {
-            zoom: 16,
+            zoom: 15,
            mapTypeId: google.maps.MapTypeId.SATELLITE,
             center: myLatLng
           });
@@ -331,4 +338,6 @@
             showHideControls();
             buildInterestPacket();
             updateMarkers();
+            document.getElementById("expressInterestPacket").disabled = "disabled";
+            setTimeout(function(){document.getElementById("expressInterestPacket").disabled = false;}, 12000 );
             });
