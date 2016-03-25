@@ -9,54 +9,59 @@
 
     var mapFleetLink;
     var myLatLng = {lat: 38.491, lng: -122.715};
-    var routePath;
-    var routeCoordinates = [];
+    var routePath1;
+    var routePath2;
+    var routeCoordinates1 = [];
+    var routeCoordinates2 = [];
+    var routeColor1 = '#33FF66'; //'rgb(0,128,255)'
+    var routeColor2 = '#33FF66'; //'rgb(0,128,255)'
+
     var targetCoordinates;
-    var targetColor = '#FF9900';
-    var routeColor = '#FF9900'; //'rgb(0,128,255)'
+    var targetColor = '#33FF66';
+
     var targetUnitKey;
     var accessUnitKey;
 
     var fleetLink = {
               1: {
                 'serialNumber': 'A',  // only use last 8 digits of MAC to save packet characters
-                'macAddress': '20000c26909795a',
+                'macAddress': '0c26909795a',
                 'agentURL': '/Bs6cc2GgCE6w',
                 'onlineStatus': true,
                 'position' : {lat: 38.490,lon: -122.7226}
                   },
               2: {
                 'serialNumber': 'B',
-                'macAddress': '20000c26908cd7e',
+                'macAddress': '0c26908cd7e',
                 'agentURL': '/LdRa4cy-o9XA',
                 'onlineStatus': true,
                 'position' : {lat: 38.4898, lon: -122.7181}
                   },
               3: {
                 'serialNumber': 'C',
-                'macAddress': '20000c2690a2732',
+                'macAddress': '0c2690a2732',
                 'agentURL': '/Bti2MjZSPH-V',
                 'onlineStatus': true,
                 'position' : {lat: 38.491, lon: -122.7135}
               } ,
               4: {
                 'serialNumber': 'D',
-                'macAddress': '20000c26904f367',
+                'macAddress': '0c26904f367',
                 'agentURL': '/7tb6u_BFviM6',
                 'onlineStatus': true,
-                'position' : {lat: 38.492, lon: -122.717}
+                'position' : {lat: 38.492, lon: -122.721}
               },
               5: {
                 'serialNumber': 'E',
-                'macAddress': '20000c2690a24e3',
+                'macAddress': '0c2690a24e3',
                 'agentURL': '/4rEw6i2TGCMO',
                 'onlineStatus': true,
-                'position' : {lat: 38.489, lon: -122.716}
+                'position' : {lat: 38.4882, lon: -122.716}
               },
               6: {
                 'serialNumber': 'F',
-                'macAddress': '20000c2690a24e3',
-                'agentURL': '/4rEw6i2TGCMO',
+                'macAddress': '0c2a690a2d54',
+                'agentURL': '/uEIDmJoynW-o',
                 'onlineStatus': true,
                 'position' : {lat: 38.495, lon: -122.706}
               }
@@ -116,7 +121,8 @@
 
 
       function clearDisplay() {
-          routePath.setMap(null);
+          routePath1.setMap(null);
+          routePath2.setMap(null);
           targetCircle.setMap(null);
           document.getElementById("returnedDataPacket").textContent = "Waiting for response...."; // indicate action
           document.getElementById("hexadecimalDataValue").textContent = "--";
@@ -223,35 +229,57 @@
       }
 
       function traceRoute(trace)   {
-            //console.log(trace)
-          //  routePath.setMap(null);
-            routeCoordinates = [null];
+
+            routeCoordinates1 = [null];
             var lineSymbol = {
                 path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW
             };
 
-            for (var i=0; i< trace.length; i++) {
-              var thisSerialNumber = trace.slice(i,i+1);
-              for (var key in fleetLink) {
-                  if (fleetLink[key].serialNumber == thisSerialNumber) {
-                      routeCoordinates[i] = new google.maps.LatLng({lat: fleetLink[key].position.lat, lng: fleetLink[key].position.lon});
-                  }
-              }
+            for (var i=0; i<= Math.floor(trace.length/2); i++) {
+                var thisSerialNumber = trace.slice(i,i+1);
+                for (var key in fleetLink) {
+                    if (fleetLink[key].serialNumber == thisSerialNumber) {
+                        routeCoordinates1[i] = new google.maps.LatLng({lat: fleetLink[key].position.lat, lng: fleetLink[key].position.lon});
+                    }
+                }
             }
 
-            routePath = new google.maps.Polyline({
-            path: routeCoordinates,
+            routePath1 = new google.maps.Polyline({
+            path: routeCoordinates1,
             icons: [{
                 icon: lineSymbol,
                 offset: '100%'
             }],
             geodesic: true,
-            strokeColor: routeColor,
-            strokeOpacity: 1.0,
-            strokeWeight: 3
+            strokeColor: routeColor1,
+            strokeOpacity: 0.8,
+            strokeWeight: 2
             });
+            routePath1.setMap(mapFleetLink);
 
-            routePath.setMap(mapFleetLink);
+            routeCoordinates2 = [null];
+
+            for (var i= 0; i<= Math.floor(trace.length/2); i++) {
+                var thisSerialNumber = trace.slice(i + Math.floor(trace.length/2),i + Math.floor(trace.length/2) +1);
+                for (var key in fleetLink) {
+                    if (fleetLink[key].serialNumber == thisSerialNumber) {
+                        routeCoordinates2[i] = new google.maps.LatLng({lat: fleetLink[key].position.lat, lng: fleetLink[key].position.lon});
+                    }
+                }
+            }
+
+            routePath2 = new google.maps.Polyline({
+            path: routeCoordinates2,
+            icons: [{
+                icon: lineSymbol,
+                offset: '100%'
+            }],
+            geodesic: true,
+            strokeColor: routeColor2,
+            strokeOpacity: 0.8,
+            strokeWeight: 2
+            });
+            routePath2.setMap(mapFleetLink);
 
             targetCoordinates = new google.maps.LatLng({lat: fleetLink[targetUnitKey].position.lat, lng: fleetLink[targetUnitKey].position.lon});
 
@@ -263,8 +291,9 @@
               fillOpacity: 0.0,
               map: mapFleetLink,
               center: targetCoordinates,
-              radius: 30
+              radius: 50
             });
+
 
       }
 
@@ -278,16 +307,26 @@
             center: myLatLng
           });
 
-          routePath = new google.maps.Polyline({
-          path: routeCoordinates,
+
+          routePath1 = new google.maps.Polyline({
+          path: routeCoordinates1,
           geodesic: true,
-          strokeColor: routeColor,
+          strokeColor: routeColor1,
           strokeOpacity: 0.7,
           strokeWeight: 4
           });
 
-          routePath.setMap(mapFleetLink);
+          routePath1.setMap(mapFleetLink);
 
+          routePath2 = new google.maps.Polyline({
+          path: routeCoordinates2,
+          geodesic: true,
+          strokeColor: routeColor2,
+          strokeOpacity: 0.7,
+          strokeWeight: 4
+          });
+
+          routePath2.setMap(mapFleetLink);
 
             targetCircle = new google.maps.Circle({
             strokeColor: targetColor,
@@ -299,6 +338,7 @@
             center: targetCoordinates,
             radius: 20
           });
+
       }
 
 

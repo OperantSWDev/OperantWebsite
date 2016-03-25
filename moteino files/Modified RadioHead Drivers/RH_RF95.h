@@ -515,7 +515,7 @@ public:
 
 
     // RK changes
-    virtual bool    sendWithDelay(const uint8_t* data, uint8_t len, uint8_t delay);
+    virtual bool    sendIfNoCad(const uint8_t* data, uint8_t len, int delay);
     // end RK changes
 
 

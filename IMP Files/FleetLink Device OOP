@@ -14,14 +14,85 @@ class FleetLink {
         settings[0] = {"serialNumber" : "A", "macAddress" : "0c2a6909795a",  "position" : {"lat" : 38.490, "lon" : -122.7226}}
         settings[1] = {"serialNumber" : "B", "macAddress" : "0c2a6908cd7e",  "position" : {"lat" : 38.4898, "lon" :  -122.7181}}
         settings[2] = {"serialNumber" : "C", "macAddress" : "0c2a690a2732",  "position" : {"lat" : 38.491, "lon" :  -122.7135}}
-        settings[3] = {"serialNumber" : "D", "macAddress" : "0c2a6904f367",  "position" : {"lat" : 38.492, "lon" :  -122.717}}
-        settings[4] = {"serialNumber" : "E", "macAddress" : "0c2a690a24e3",  "position" : {"lat" : 38.489, "lon" :  -122.716}}
-        settings[5] = {"serialNumber" : "F", "macAddress" : null,  "position" : {"lat" : 38.495, "lon" :  -122.706}}
+        settings[3] = {"serialNumber" : "D", "macAddress" : "0c2a6904f367",  "position" : {"lat" : 38.492, "lon" :  -122.721}}
+        settings[4] = {"serialNumber" : "E", "macAddress" : "0c2a690a24e3",  "position" : {"lat" : 38.4882, "lon" :  -122.716}}
+        settings[5] = {"serialNumber" : "F", "macAddress" : "0c2a690a2d54",  "position" : {"lat" : 38.495, "lon" :  -122.706}}
     }
 
 
 }
 
+
+class GeoCalcs {
+
+    function distanceBetween(iFleetLink, unit1, unit2) {
+        // from Haversine formula
+        // http://www.movable-type.co.uk/scripts/latlong.html
+        // returns distance in meters
+        local R = 6371000; // diameter of earth
+        local lat1
+        local lon1
+        local lat2
+        local lon2
+        foreach (count, value in iFleetLink.settings) {
+            if (iFleetLink.settings[count].serialNumber == unit1) {
+                lat1 = iFleetLink.settings[count].position.lat
+                lon1 = iFleetLink.settings[count].position.lon
+            } else if (iFleetLink.settings[count].serialNumber == unit2){
+                lat2 = iFleetLink.settings[count].position.lat
+                lon2 = iFleetLink.settings[count].position.lon
+            }
+        }
+        local phi1 = lat1 * PI / 180
+        local phi2 = lat2 * PI / 180
+        local deltaPhi = (lat2-lat1) * PI / 180
+        local deltaLambda = (lon2-lon1) * PI / 180
+        local a = math.sin(deltaPhi/2) * math.sin(deltaPhi/2) + math.cos(phi1) * math.cos(phi2) * math.sin(deltaLambda/2) * math.sin(deltaLambda/2)
+        local c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+        local distance = R * c
+        return distance
+
+    }
+
+    function calcImprovement(iFleetLink, source, thisUnit, destination) {
+        local distanceImproved
+        if (source != destination) {
+            distanceImproved = distanceBetween(iFleetLink, source, destination) - distanceBetween(iFleetLink, thisUnit, destination)
+        } else {
+            distanceImproved = 0
+        }
+        return distanceImproved
+    }
+
+    function bearing(iFleetLink, unit1, unit2) {
+        // from Haversine formula
+        // http://www.movable-type.co.uk/scripts/latlong.html
+        // returns angle of vector from unit1 to unit2, north is 0, range ia -180 to +180
+        local R = 6371000; // metres
+        local lat1
+        local lon1
+        local lat2
+        local lon2
+        foreach (count, value in iFleetLink.settings) {
+            if (iFleetLink.settings[count].serialNumber == unit1) {
+                lat1 = iFleetLink.settings[count].position.lat
+                lon1 = iFleetLink.settings[count].position.lon
+            } else if (iFleetLink.settings[count].serialNumber == unit2){
+                lat2 = iFleetLink.settings[count].position.lat
+                lon2 = iFleetLink.settings[count].position.lon
+            }
+        }
+        local phi1 = lat1 * PI / 180
+        local phi2 = lat2 * PI / 180
+        local lambda1 = lon1 * PI / 180
+        local lambda2 = lon2 * PI / 180
+        local y = math.sin(lambda2-lambda1) * math.cos(phi2)
+        local x = math.cos(phi1) * math.sin(phi2) - math.sin(phi1) * math.cos(phi2) * math.cos(lambda1-lambda1);
+        local bearing = math.atan2(y,x) * 180 / PI
+        return bearing
+    }
+
+}
 
 
 class Interest {
@@ -103,7 +174,7 @@ class DeviceFace {
         local thisEntryId = nextEntryId
         if (nextEntryId < pendingInterestTable.len()-1) {
             nextEntryId++;
-            server.log("incrementing nextEntryId to " + nextEntryId)
+            //server.log("incrementing nextEntryId to " + nextEntryId)
         } else {
             nextEntryId = 0; // start again at 0 if you've filled up the PIT
         }
@@ -113,7 +184,7 @@ class DeviceFace {
 
     ////////////////////// INTEREST HANDLER  //////////////////////////
 
-    function processInterest(interface, iInterest, iFleetLink, iLoRa) {
+    function processInterest(interface, iInterest, iFleetLink, iLoRa, iGeoCalcs) {
         if (findMatchingPIT(iInterest) != null) {
             server.log("this is an existing Interest and processing will terminate")
         } else {  // It's a new interest..here we go!
@@ -126,32 +197,32 @@ class DeviceFace {
                     (iFleetLink.settings[iFleetLink.thisUnit].serialNumber == "F" && (iInterest.trace.slice(iInterest.trace.len()-1) != "C") && (iInterest.trace.slice(iInterest.trace.len()-1) != "w"))  ||
                     (iFleetLink.settings[iFleetLink.thisUnit].serialNumber != "C" && iInterest.trace.slice(iInterest.trace.len()-1) == "F")
                 ) {
-                   server.log("Unit " + iFleetLink.settings[iFleetLink.thisUnit].serialNumber + " is ignoring Unit " + iInterest.trace)
+                   server.log("Unit " + iFleetLink.settings[iFleetLink.thisUnit].serialNumber + " is ignoring Interest from Unit " + iInterest.trace)
                 } else {
             //////////////// DEVELOPMENT ONLY ///////////////////////////////////
 
 
                 local thisEntryId = addToPIT(interface, null, iInterest) // add it to the PIT
-                server.log("adding new Interest at PIT[" + thisEntryId +"]" )
+                //server.log("adding new Interest at PIT[" + thisEntryId +"]" )
                 server.log("intended for unit " + iInterest.name[1] + " this is unit " + iFleetLink.settings[iFleetLink.thisUnit].serialNumber)
 
                 if (iInterest.name[0] == "m" && iInterest.name[1] == iFleetLink.settings[iFleetLink.thisUnit].serialNumber) {  // is this a local Modbus query?
-                    server.log("this is a local modbus query ")
+                    //server.log("this is a local modbus query ")
                     local iModbus = Modbus()
                     iModbus.initialize()
                     local mData = Data()
                     mData = iModbus.query(iInterest)
                     mData.trace = iInterest.trace // start the data object out with the trace of the interest itself
-                    processData(mData, iFleetLink, iLoRa)   // you've got your local data, now need to send it on the right path
+                    processData(mData, iFleetLink, iLoRa, iGeoCalcs)   // you've got your local data, now need to send it on the right path
                 } else {
-                    iLoRa.sendWithDelay(iInterest, iFleetLink)
+                    iLoRa.sendWithDelay(iInterest, iFleetLink, iGeoCalcs)
                     }
                 }
         }
     }
 
 
-    function processData(mData, iFleetLink, iLoRa) {
+    function processData(mData, iFleetLink, iLoRa, iGeoCalcs) {
 
         local matchingPITEntryId = findMatchingPIT(mData)
 
@@ -162,10 +233,10 @@ class DeviceFace {
             // Units A and C can't hear each other; Unit F can ONLY hear C
             if ((iFleetLink.settings[iFleetLink.thisUnit].serialNumber == "C" && mData.trace.slice(mData.trace.len()-1) == "A")  ||
                 (iFleetLink.settings[iFleetLink.thisUnit].serialNumber == "A" && mData.trace.slice(mData.trace.len()-1) == "C")  ||
-                (iFleetLink.settings[iFleetLink.thisUnit].serialNumber == "F" && mData.trace.slice(mData.trace.len()-1) != "C") ||
+                (iFleetLink.settings[iFleetLink.thisUnit].serialNumber == "F" && (mData.trace.slice(mData.trace.len()-1) != "C") && (mData.trace.slice(mData.trace.len()-1) != "w")) ||
                 (iFleetLink.settings[iFleetLink.thisUnit].serialNumber != "C" && mData.trace.slice(mData.trace.len()-1) == "F")
             ) {
-                server.log("Unit " + iFleetLink.settings[iFleetLink.thisUnit].serialNumber + " is ignoring Unit " + mData.trace)
+                server.log("Unit " + iFleetLink.settings[iFleetLink.thisUnit].serialNumber + " is ignoring Data from Unit " + mData.trace)
             } else {
             //////////////// DEVELOPMENT ONLY ///////////////////////////////////
 
@@ -179,7 +250,7 @@ class DeviceFace {
                         server.log(mData.toString() + " returned to agent")
                     break
                     case "loRa":
-                        iLoRa.sendWithDelay(mData, iFleetLink)
+                        iLoRa.sendWithDelay(mData, iFleetLink, iGeoCalcs)
                     break
                     default:
                         //server.log("unrecognized interface from PIT entry")
@@ -205,7 +276,7 @@ class DeviceFace {
             if (pendingInterestTable[i].rawin("timer")) { // if there is a timer entry
             //server.log("checking PIT[" + i + "]for expired entries..." );
                 if (pendingInterestTable[i].timer < time()) {
-                    server.log("PIT[" + i + "] has an expired entry" );
+                    //server.log("PIT[" + i + "] has an expired entry" );
                     pendingInterestTable[i].clear()
                     //server.log(" and was cleared")
                 }
@@ -229,7 +300,7 @@ class DeviceFace {
                         }
                         //server.log("checking name component " + j + " with values " + pendingInterestTable[i].interest.name[j] + " and " + dObject.name[j]);
                     }
-                    server.log("checking PIT entry nonce " + pendingInterestTable[i].interest.nonce + " equals object nonce " + dObject.nonce)
+                    //server.log("checking PIT entry nonce " + pendingInterestTable[i].interest.nonce + " equals object nonce " + dObject.nonce)
                     if (pendingInterestTable[i].interest.nonce.tostring() != dObject.nonce.tostring()) {  // the nonces must match as well, seems like one was an integer?
                         //server.log("match failed at nonce")
                         matchFlag = false
@@ -320,7 +391,7 @@ class Data {
             //server.log("no modbus reply")
             name = dInterest.name
             nonce = dInterest.nonce
-            contents = "4E6F204D6F64627573" // ASCII for "NoModbus"
+            contents = "4E6F4D6F64627573" // ASCII for "NoModbus"
         }
     }
 }
@@ -394,11 +465,11 @@ class Modbus {
 
     function query(qInterest) {
         local wString =  qInterest.toModbusCommand(qInterest)
-        server.log("Modbus write " + wString + " at " + hardware.millis())
+        //server.log("Modbus write " + wString + " at " + hardware.millis())
         writeString(wString)
-        server.log("Modbus write complete at " + hardware.millis())
+        //server.log("Modbus write complete at " + hardware.millis())
         local rString = readString()
-        server.log("Modbus read " + rString + " at " + hardware.millis())
+        //server.log("Modbus read " + rString + " at " + hardware.millis())
         local qData = Data()
         qData.fromModbusResponse(qInterest, rString)
         return qData
@@ -427,12 +498,12 @@ class LoRa {
                 loopCtr++;
 
             } while(loopCtr <= 100); // going to block here for 50 reads
-                server.log("LoRa reception of " + rString + " of size " + rString.len())
+                //server.log("LoRa reception of " + rString + " of size " + rString.len())
 
         return rString
     }
 
-    function sendWithDelay(objectToSend, iFleetLink) {
+    function sendWithDelay(objectToSend, iFleetLink, iGeoCalcs) {
         local txDelay
         //server.log("entering sendWithDelay at " + hardware.millis())
         // if this object was sourced from this unit then send immediately
@@ -442,18 +513,62 @@ class LoRa {
         //if (objectToSend.trace == "w" || objectToSend.name[1] == iFleetLink.settings[iFleetLink.thisUnit].serialNumber) {
         if (objectToSend.trace == "w") {
             objectToSend.trace = iFleetLink.settings[iFleetLink.thisUnit].serialNumber // replace the "w" with this units serial number in the trace
-            server.log("this is new agent interest, transmitting in 50 ms")
-            txDelay = 1
+            //server.log("this is new agent interest, transmitting immediately")
+            txDelay = 0
             sendLoRa(objectToSend, iFleetLink, txDelay)
+
         } else if (objectToSend.name[1] == iFleetLink.settings[iFleetLink.thisUnit].serialNumber) {
             objectToSend.trace += iFleetLink.settings[iFleetLink.thisUnit].serialNumber // add this units serial number to the trace
-            server.log("this is my local data, transmitting in 50 ms")
-            txDelay = 1
+            //server.log("this is my local data, transmitting immediately")
+            txDelay = 0
             sendLoRa(objectToSend, iFleetLink, txDelay)
-        } else {  // or wait a random amount of time to forward a non local object
-            objectToSend.trace += iFleetLink.settings[iFleetLink.thisUnit].serialNumber // add this units serial number to the trace
-            txDelay = 4 + irand(15) // random numbertime delay
-            server.log("forward w/ delay " + 50*txDelay)
+
+        } else {  // or wait a random amount of time to forward a non-local object
+            local baseForwardDelay = 20
+            // this delay of 20 quanta between a local response and the shortest possible forwarding delay is crucial
+            // we need about 100ms for the Modbus to reply or timeout, then 100 ms more for variability
+            // otherwise a forwarding unit may trump a local responder, whcih is all wrong!
+            // I set it to 20 delay quanta.  If a delay quanta is 3 symbol periods, then this is about 240 ms at 1200 bps
+            // if I slow the network down to 300 bps for demo, I should reduce this 20 quanta to 5 quanta <!!!!!!!!!!!
+            local wirelessRange = 1000
+
+            local sourceSerialNumber = objectToSend.trace.slice(objectToSend.trace.len()-1) // the sending unit is always the last serialnumber on trace
+            server.log("came from " + sourceSerialNumber)
+
+
+            local thisSerialNumber = iFleetLink.settings[iFleetLink.thisUnit].serialNumber
+            server.log("this is " + thisSerialNumber)
+
+            objectToSend.trace += thisSerialNumber // add this units serial number to the trace\
+
+            local destinationSerialNumber = null
+            // this next section needs to be different for interests and data
+            if (objectToSend.type == "i") {
+                 server.log("this is an interest with trace " + objectToSend.trace)
+                destinationSerialNumber = objectToSend.name[1] // an interest's target is in the name
+            } else if (objectToSend.type == "d") {
+                 server.log("this is a data with trace " + objectToSend.trace)
+                destinationSerialNumber = objectToSend.trace.slice(0,1) // a data object is going back to the original sender
+            } else {
+                server.log("unknown object to send")
+            }
+            server.log("going to " + destinationSerialNumber)
+
+            // the more we move this towards the destination, the shorter the TX delay (but not less than 0)
+            local distanceImproved = iGeoCalcs.calcImprovement(iFleetLink, sourceSerialNumber, thisSerialNumber, destinationSerialNumber)
+            local geolocationDelay = 30 * (wirelessRange - distanceImproved)/wirelessRange
+            if (geolocationDelay < 0) {
+                geolocationDelay = 0
+            } else if (geolocationDelay > 40) {
+                geolocationDelay = 40
+            }
+
+            local randomDelay = irand(5)
+            txDelay = baseForwardDelay + geolocationDelay + randomDelay
+            txDelay = txDelay.tointeger()
+
+            server.log("TX delay = " + txDelay + " from base " + baseForwardDelay + " plus geo " + geolocationDelay + " random " + randomDelay)
+
             sendLoRa(objectToSend, iFleetLink, txDelay)
 
         }
@@ -475,15 +590,30 @@ class LoRa {
     local aFleetLink = FleetLink()
     aFleetLink.initialize();
 
-    for (local i=0; i<6; i++) {
-        if (aFleetLink.settings[i].macAddress == imp.getmacaddress()) {
-            aFleetLink.thisUnit = i
+    foreach (count, value in aFleetLink.settings) {
+        if (aFleetLink.settings[count].macAddress == imp.getmacaddress()) {
+            aFleetLink.thisUnit = count
             server.log("this is unit serial number " + aFleetLink.settings[aFleetLink.thisUnit].serialNumber + " with MAC " + aFleetLink.settings[aFleetLink.thisUnit].macAddress)
-
         }
+
     }
 
 
+    local aGeoCalcs = GeoCalcs
+    /*
+    local deltaAC = aGeoCalcs.distanceBetween(aFleetLink,"A", "C")
+    local deltaBC = aGeoCalcs.distanceBetween(aFleetLink,"B", "C")
+    local deltaDC = aGeoCalcs.distanceBetween(aFleetLink,"D", "C")
+
+    server.log("distance AC " + deltaAC )
+    server.log("distance BC " + deltaBC )
+    server.log("distance DC " + deltaDC )
+
+    local deltaImprovementABC = aGeoCalcs.calcImprovement(aFleetLink, "A", "B", "C")
+    server.log("improvemnt ABC " + deltaImprovementABC )
+    local deltaImprovementADC = aGeoCalcs.calcImprovement(aFleetLink, "A", "D", "C")
+    server.log("improvemnt ADC " + deltaImprovementADC )
+    */
 
     local aLoRa = LoRa()
     function loRaAvailable() {
@@ -493,17 +623,17 @@ class LoRa {
             if (lString.len() > 0) {
                 switch (lString.slice(0,1)){
                 case "i":
-                    server.log("LoRa received an Interest")
+                    //server.log("LoRa received an Interest")
                     local lInterest = Interest()
                     lInterest.fromString(lString)
-                    aFace.processInterest("loRa", lInterest, aFleetLink, aLoRa)
+                    aFace.processInterest("loRa", lInterest, aFleetLink, aLoRa, aGeoCalcs)
 
                 break
                 case "d":
-                    server.log("LoRa received a Data " + lString)
+                    //server.log("LoRa received a Data " + lString)
                     local lData = Data()
                     lData.fromString(lString)
-                    aFace.processData(lData, aFleetLink, aLoRa)
+                    aFace.processData(lData, aFleetLink, aLoRa, aGeoCalcs)
                 break
                 default:
                     server.log("unknown transmission received from LoRa: " + lString)
@@ -522,10 +652,9 @@ class LoRa {
     function sendLoRa(objectToSend, iFleetLink, txDelay) {
         local newLineChar = 10
         local stringToSend = objectToSend.toString()
-        local actualTxDelay = 50 * txDelay
         loRaDriver.write(format("%.2u",txDelay) + stringToSend + newLineChar.tochar())
         loRaDriver.flush(); // wait until write done
-        server.log(stringToSend + " sent to LoRa with " + actualTxDelay + " ms delay at " + hardware.millis())
+        //server.log(stringToSend + " sent to LoRa in time slot " + TxDelay + " at " + hardware.millis())
     }
 
 //////////////////////  RUN TIME EVENT REGISTRATION  //////////////////////////
@@ -539,7 +668,7 @@ class LoRa {
         local aInterest = Interest()
         aInterest.fromTable(iTable)
         //server.log(aInterest.toString() + " received from agent")
-        aFace.processInterest("agent", aInterest, aFleetLink, aLoRa)
+        aFace.processInterest("agent", aInterest, aFleetLink, aLoRa, aGeoCalcs)
     }
 
     agent.on("agentToDevice", receivedAgentInterest);

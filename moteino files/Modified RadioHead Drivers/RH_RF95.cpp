@@ -136,6 +136,8 @@ bool RH_RF95::init()
     return true;
 }
 
+
+
 // C++ level interrupt handler for this instance
 // LORA is unusual in that it has several interrupt lines, and not a single, combined one.
 // On MiniWirelessLoRa, only one of the several interrupt lines (DI0) from the RFM95 is usefuly
@@ -145,6 +147,27 @@ void RH_RF95::handleInterrupt()
 {
     // Read the interrupt register
     uint8_t irq_flags = spiRead(RH_RF95_REG_12_IRQ_FLAGS);
+
+
+
+
+    // RK change
+    // on CAD Done interrupt, comes here
+    if (_mode == RHModeCAD && (irq_flags & RH_RF95_CAD_DONE))
+    {
+      // trying to read next packet after CAD
+        if (_mode == RHModeCAD && (irq_flags  & RH_RF95_CAD_DETECTED)) // check CAD Detected bit
+        {;
+          _cadDetectFlag = true; // set global CAD detected flag
+          spiWrite(RH_RF95_REG_12_IRQ_FLAGS, 0xFF); // clear the IRQ flags
+          }
+          setModeRx(); // back to Idle mode
+    }
+    // end RK change
+
+
+
+
     if (_mode == RHModeRx && irq_flags & (RH_RF95_RX_TIMEOUT | RH_RF95_PAYLOAD_CRC_ERROR))
     {
 	_rxBad++;
@@ -176,28 +199,12 @@ void RH_RF95::handleInterrupt()
 	setModeIdle();
     }
 
-
-
-    // RK change
-    // on CAD Done interrupt, comes here
-    else if (_mode == RHModeCAD && (irq_flags & RH_RF95_CAD_DONE))
-    {
-        if (_mode == RHModeCAD && (irq_flags  & RH_RF95_CAD_DETECTED)) // check CAD Detected bit
-        {
-          _cadDetectFlag = true; // set global CAD detected flag
-          spiWrite(RH_RF95_REG_12_IRQ_FLAGS, 0xFF); // clear the IRQ flags
-          }
-        setModeIdle(); // back to Idle mode
-        // for this FleetLink applciation, once we detect a CAD Done, we don't want to go to RX mode and get confusing apckets
-    }
-    // end RK change
-
-
-
-
-
     spiWrite(RH_RF95_REG_12_IRQ_FLAGS, 0xff); // Clear all IRQ flags
 }
+
+
+
+
 
 // These are low level functions that call the interrupt handler for the correct
 // instance of RH_RF95.
@@ -301,50 +308,54 @@ bool RH_RF95::send(const uint8_t* data, uint8_t len)
 
 // begin RK change
 // this new function is whole point of library changes, returns true only if TX occurs
-bool RH_RF95::sendWithDelay(const uint8_t* data, uint8_t len, uint8_t delay)
+bool RH_RF95::sendIfNoCad(const uint8_t* data, uint8_t len, int txDelay)
 {
   // sends the data after a delay, but monitors CAD during the delay time and cancels the
   // transmission if a CAD detect occurs during this delay period
-  // delay is specified in milliseconds (0-255ms)
+  // delay is specified in milliseconds
     if (len > RH_RF95_MAX_MESSAGE_LEN)
 	     return false;
 
     waitPacketSent(); // Make sure we dont interrupt an outgoing message
+    // now start a loop to delay per user request; we check for CAD and bail if it occurs
+    unsigned long startTime = millis(); // this time marker used to test when the user specified TX delay is over
+    unsigned long txTimeout = 3000;  // give up no matter what after 3 seconds
+    bool txCanceled = false;
 
-    // now start a loop to delay; we check for CAD and bail if it occurs
-    unsigned long starttime = millis();
-    Serial.print("----- DELAY ");
-    Serial.println(starttime);
-    while ((millis() - starttime) < delay)
-    {
+    while ((millis() - startTime) < txDelay && (millis() - startTime < txTimeout)) {
+    //while (((millis() - startTime) < txDelay || (millis() - channelClearTime) < channelClearTimeout) && (millis() - startTime < txTimeout))
+    // logic is: 1) check CAD at least as long as user specified TX delay.  If CAD is detected, keep checking CAD until it's clear at least 200 ms
+    // Bailout after 3 seconds
+
+        // If CAD Detect occurs, the TX is canceled
         setModeCAD();
         if (_cadDetectFlag) {
-          Serial.print("xxxxx CANCEL TX ");
-          Serial.println(millis());
-          _cadDetectFlag = false; // reset flag
-          return false;
+          txCanceled = true;
+          _cadDetectFlag = false; // reset flag and check CAD again
           YIELD;  // not sure if this yield works on my platform?
+          return false;
           }
+    }  // check CAD again
+
+    if (!txCanceled){
+        // if you got this far, delay is over and its time to transmit
+        // Position at the beginning of the FIFO
+        spiWrite(RH_RF95_REG_0D_FIFO_ADDR_PTR, 0);
+        // The headers
+        spiWrite(RH_RF95_REG_00_FIFO, _txHeaderTo);
+        spiWrite(RH_RF95_REG_00_FIFO, _txHeaderFrom);
+        spiWrite(RH_RF95_REG_00_FIFO, _txHeaderId);
+        spiWrite(RH_RF95_REG_00_FIFO, _txHeaderFlags);
+        // The message data
+        spiBurstWrite(RH_RF95_REG_00_FIFO, data, len);
+        spiWrite(RH_RF95_REG_22_PAYLOAD_LENGTH, len + RH_RF95_HEADER_LEN);
+
+        setModeTx(); // Start the transmitter
+        // when Tx is done, interruptHandler will fire and radio mode will return to STANDBY
+        return true;
+    } else {
+        return false;
     }
-    // if you got this far, delay is over and its time to transmit
-    // Position at the beginning of the FIFO
-    spiWrite(RH_RF95_REG_0D_FIFO_ADDR_PTR, 0);
-    // The headers
-    spiWrite(RH_RF95_REG_00_FIFO, _txHeaderTo);
-    spiWrite(RH_RF95_REG_00_FIFO, _txHeaderFrom);
-    spiWrite(RH_RF95_REG_00_FIFO, _txHeaderId);
-    spiWrite(RH_RF95_REG_00_FIFO, _txHeaderFlags);
-    // The message data
-    spiBurstWrite(RH_RF95_REG_00_FIFO, data, len);
-    spiWrite(RH_RF95_REG_22_PAYLOAD_LENGTH, len + RH_RF95_HEADER_LEN);
-
-    setModeTx(); // Start the transmitter
-    // when Tx is done, interruptHandler will fire and radio mode will return to STANDBY
-    Serial.print(">>>>> TX ");
-    Serial.println(millis());
-    Serial.print(" ");
-    return true;
-
 }
 // end RK change
 

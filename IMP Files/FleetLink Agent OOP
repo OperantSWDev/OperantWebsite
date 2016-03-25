@@ -204,9 +204,9 @@ class FleetLink {
         settings[0] = {"serialNumber" : "A", "macAddress" : "0c2a6909795a",  "position" : {"lat" : 38.490, "lon" : -122.7226}}
         settings[1] = {"serialNumber" : "B", "macAddress" : "0c2a6908cd7e",  "position" : {"lat" : 38.4898, "lon" :  -122.7181}}
         settings[2] = {"serialNumber" : "C", "macAddress" : "0c2a690a2732",  "position" : {"lat" : 38.491, "lon" :  -122.7135}}
-        settings[3] = {"serialNumber" : "D", "macAddress" : "0c2a6904f367",  "position" : {"lat" : 38.492, "lon" :  -122.717}}
-        settings[4] = {"serialNumber" : "E", "macAddress" : "0c2a690a24e3",  "position" : {"lat" : 38.489, "lon" :  -122.716}}
-        settings[5] = {"serialNumber" : "F", "macAddress" : null,  "position" : {"lat" : 38.495, "lon" :  -122.706}}
+        settings[3] = {"serialNumber" : "D", "macAddress" : "0c2a6904f367",  "position" : {"lat" : 38.492, "lon" :  -122.721}}
+        settings[4] = {"serialNumber" : "E", "macAddress" : "0c2a690a24e3",  "position" : {"lat" : 38.4882, "lon" :  -122.716}}
+        settings[5] = {"serialNumber" : "F", "macAddress" : "0c2a690a2d54",  "position" : {"lat" : 38.495, "lon" :  -122.706}}
     }
 
     function saveToServer() {
@@ -280,7 +280,7 @@ class FleetLink {
 
 
     function receiveDeviceData(dTable){
-        //server.log("agent received data packet " + dTable.contents)
+        server.log("agent received data packet " + dTable.contents)
         local aData = Data();
         aData.fromTable(dTable)
 
