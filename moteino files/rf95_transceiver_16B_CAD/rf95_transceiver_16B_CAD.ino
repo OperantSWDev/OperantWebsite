@@ -26,12 +26,7 @@
     uint8_t loRaRxPacketLength = LORA_PAYLOAD_LENGTH;    // need a variable for LoRa RX function to return number of byte
 
     // where we put characters received from Imp by Serial1 and to be sent to LoRa radio       
-    uint8_t impRxByte = 0; // byte buffer for Serial1 read
-   
-    // A timer is set when a LoRa packet is received, when it times out, we assume reception is complete
-    unsigned long loRaRxTimer; //in ms, we use 'unsigned long' because ms timer is unsigned long integer
-    unsigned long loRaRxTimeout = 200; // max amount of time to assume a LoRa RX will take to complete between packets and processing
-    
+    uint8_t impRxByte = 0; // byte buffer for Serial1 read  
 
   ////////////////////////////////////////////    
   // readSerial variables    
@@ -45,21 +40,22 @@
     uint8_t loRaTxPacketLength = LORA_PAYLOAD_LENGTH;    // need a variable for LoRa TX function in uint8_t form
  
     unsigned long serial1RxTimer; //in ms, we use 'unsigned long' because ms timer is unsigned long integer
-    unsigned long serial1RxTimeout = 10; // max amount of time to assume the Imp will take to send a byte
+    unsigned long serial1RxTimeout = 30; // max amount of time to assume the Imp will take to send a byte
    
     int loRaTxDelay = 0; // desired delay
-    unsigned long loRaTxDelayTimer = 0;
-    
+ 
     unsigned long networkActivityTimer; //in ms, we use 'unsigned long' because ms timer is unsigned long integer
-    unsigned long networkActivityTimeout = 5000; // clear the network out every 5 seconds of no activity
+    unsigned long networkActivityTimeout = 5000; // clear the network out every N seconds of no activity
 
   ////////////////////////////////////////////    
   // change the values below to match what's being written to the radio in the setup below
   ////////////////////////////////////////////  
       
-    float SF = 10;
+    float SF = 12;
     float BW = 250000;   
     float symbolPeriod = (1000*pow(2,SF))/BW; // in milliseconds
+    
+   
   
 
     
@@ -74,25 +70,27 @@
       Serial.println("init failed");
     } else { 
     Serial.println("init OK - "); }
-
+    Serial.print("symbol period ");
+    Serial.println(symbolPeriod);
+ 
     rf95.setFrequency(FREQUENCY);
-    rf95.spiWrite(RH_RF95_REG_0B_OCP, 0x2F);     // Set OCP to 120 mA..KEEP DUTY CYCLE LOW at +20 dBm!!
+    rf95.spiWrite(RH_RF95_REG_0B_OCP, 0x33);     // Set OCP to 160 mA..KEEP DUTY CYCLE LOW at +20 dBm!!
     rf95.spiWrite(RH_RF95_REG_0C_LNA, 0x03);     // LNA settings: Boost on, 150% LNA curren
     rf95.spiWrite(RH_RF95_REG_1D_MODEM_CONFIG1, 0x82);    // Set BW to 250 kHz, Coding Rate to 4/5, Explicit Header ON
-    rf95.spiWrite(RH_RF95_REG_1E_MODEM_CONFIG2, 0xA4);     // Set SF at 10, TXContinous = Normal, CRC ON 
+    rf95.spiWrite(RH_RF95_REG_1E_MODEM_CONFIG2, 0xC4);     // Set SF at 12, TXContinous = Normal, CRC ON 
     rf95.spiWrite(RH_RF95_REG_21_PREAMBLE_LSB, 0x0A); // Preamble Length LSB (+ 4.25 Symbols)       
     rf95.spiWrite(RH_RF95_REG_22_PAYLOAD_LENGTH, 0x10); // Payload length in bytes. 
     rf95.spiWrite(RH_RF95_REG_26_MODEM_CONFIG3, 0x04); // LNA gain set by the internal AGC loop
-    rf95.setTxPower(3); 
+    rf95.setTxPower(20); 
     // rf95.printRegisters();  // this will print out the LoRa registers for debug
+    
   }
 
 
   void loop() {
-      
+      delay(10);
       if (rf95.available())   {
           networkActivityTimer = millis();
-          loRaRxTimer = millis();
           if (rf95.recv(loRaRxPacket, &loRaRxPacketLength)) {
               Serial.print("recvd: "); 
               for (int i = 0; i< loRaRxPacketLength; i++) {
@@ -100,9 +98,9 @@
                     Serial.print((char)loRaRxPacket[i]); 
                 }
               }  
-              Serial.print(" at "); Serial.println(millis());
+              Serial.print(" at "); Serial.print(millis());
               int lastRSSIVal = rf95.lastRssi();
-              //Serial.print(" with RSSI= "); Serial.println(lastRSSIVal); 
+              Serial.print(" with RSSI= "); Serial.println(lastRSSIVal); 
               for (int i = 0; i < LORA_PAYLOAD_LENGTH; i++) {             
                   messageToImp[messageToImpPointer] = loRaRxPacket[i]; 
                   if (loRaRxPacket[i] == 10) {   // complete if this message contains the EOL character ('/N') or the message buffer is full 
@@ -115,7 +113,7 @@
               } 
               if (messageToImpComplete) {  
                   Serial1.write((char*)messageToImp); // send the LoRa reception to IMP
-                  Serial.println();  
+                  Serial.println("");  
                   clearAll(); 
               }
           }
@@ -124,12 +122,11 @@
       
                 
       if (Serial1.available()) {
-          Serial.println();  
-          rf95.setModeIdle(); // immediately go to Idle mode, so we don't receive any confusing LoRa packets         
           networkActivityTimer = millis();
           serial1RxTimer =  millis();
           
           while (millis() - serial1RxTimer < serial1RxTimeout) { 
+            
             
               if (Serial1.available()) {            
                     impRxByte = Serial1.read(); // get one byte from serial port
@@ -144,7 +141,7 @@
                         int loRaTxDelay =  ((String(messageToLoRa[0]).toInt() - 48) * 10) + (String(messageToLoRa[1]).toInt() - 48); // stupid, don't even ask!
                         loRaTxDelay = min(loRaTxDelay, 99); // put bounds on it in case of TX garbage
                         loRaTxDelay = max(loRaTxDelay, 0);
-                        int delayQuantum = 3*symbolPeriod; 
+                        int delayQuantum = 4*symbolPeriod; 
                         loRaTxDelay = delayQuantum*loRaTxDelay; 
                         int numberFullTxPackets = (messageToLoRaPointer-1) / LORA_PAYLOAD_LENGTH;
                         int numberPartialTxPackets = 0;
@@ -157,7 +154,7 @@
                             clearloRaTxPacket(); // Clear the loRaTx packet to prep for next one
                             if (!txCanceledFlag) {
                                 if (i != 0) {
-                                    loRaTxDelay = 0; // only the first packet gets a delay
+                                    loRaTxDelay = 0; // 
                                 }       
                                 Serial.print("send ");
                                 for (int j=0; j<LORA_PAYLOAD_LENGTH; j++) {
@@ -168,14 +165,18 @@
                                     }
                                  } 
                                 Serial.print("  with delay  "); Serial.print(loRaTxDelay); Serial.print(", start  "); Serial.print(millis()); 
+                                                                
                                 digitalWrite(LED,HIGH);
                                 if(rf95.sendIfNoCad(loRaTxPacket, loRaTxPacketLength, loRaTxDelay)) { 
                                 } else {  // A CAD occurred, indicating another unit won the TX collision and our packet was not sent
                                    txCanceledFlag = true;
                                    Serial.print(", cancel "); Serial.print(millis()); 
+                                   digitalWrite(LED,LOW); 
+
                                 }
                                 rf95.waitPacketSent(); // block until complete
                                 Serial.print(", end   "); Serial.println(millis()); 
+                                
                                 digitalWrite(LED,LOW); 
                           }
                        }

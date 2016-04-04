@@ -35,7 +35,7 @@
                 'macAddress': '0c26908cd7e',
                 'agentURL': '/LdRa4cy-o9XA',
                 'onlineStatus': true,
-                'position' : {lat: 38.4898, lon: -122.7181}
+                'position' : {lat: 38.492, lon: -122.721}
                   },
               3: {
                 'serialNumber': 'C',
@@ -49,7 +49,7 @@
                 'macAddress': '0c26904f367',
                 'agentURL': '/7tb6u_BFviM6',
                 'onlineStatus': true,
-                'position' : {lat: 38.492, lon: -122.721}
+                'position' : {lat: 38.4898, lon: -122.7181}
               },
               5: {
                 'serialNumber': 'E',
@@ -144,7 +144,7 @@
         $.ajax({
         // send the interest packet to the selected agent and expect a data packet in response
            url: baseURL + fleetLink[accessUnitKey].agentURL + '/expressInterest',
-           timeout: 15000,
+           timeout: 10000,
            data: JSON.stringify(interestPacket), // convert interest packet string to JSON
            type: 'POST',
            success : function(response) {
@@ -156,14 +156,14 @@
 
                     traceRoute(dataTable.trace); //display the route trace
                     new Audio("img/smallBell2.wav").play();  // sound chime to indicate successful data packet reception
-                    setTimeout(function(){document.getElementById("expressInterestPacket").disabled = false;}, 12000 );
+                    setTimeout(function(){document.getElementById("expressInterestPacket").disabled = false;}, 10000 );
                   }
             },
            error : function(jqXHR, textStatus, err) {
 
                var errorResponse = jqXHR.status + ' ' + textStatus + ': ' + err + ' - ' + jqXHR.responseText;
                document.getElementById("returnedDataPacket").textContent = errorResponse;
-               setTimeout(function(){document.getElementById("expressInterestPacket").disabled = false;}, 12000 );
+               setTimeout(function(){document.getElementById("expressInterestPacket").disabled = false;}, 10000 );
            }
          });
        }
@@ -379,5 +379,5 @@
             buildInterestPacket();
             updateMarkers();
             document.getElementById("expressInterestPacket").disabled = "disabled";
-            setTimeout(function(){document.getElementById("expressInterestPacket").disabled = false;}, 12000 );
+            setTimeout(function(){document.getElementById("expressInterestPacket").disabled = false;}, 10000 );
             });
