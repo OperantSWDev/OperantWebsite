@@ -58,12 +58,9 @@
 														<label id="gatewayLabel" style="color= black; float:left; margin-left:5%; margin-bottom:25px; width:60%; font-size:1.2em">Select Gateway</label>
 														<img  id="gatewayIcon"  src="img/gatewayIcon2.png" style="float:right; margin-top:20px; margin-left:10%; margin-right:10%"  height="15%" width="15%">
 														<select   id="selectedAccessPoint"   data-native-menu="false"  onchange="updateMarkers()"; >
-														<option value="A" >Unit A</option>
+														<option value="A"  selected="selected">Unit A</option>
 														<option value="B" >Unit B</option>
-														<option value="C" selected="selected">Unit C</option>
-														<option value="D" >Unit D</option>
-														<option value="E" >Unit E</option>
-														<option value="F" >Unit F</option>
+														<option value="C">Unit C</option>
 														</select>
 
 										</div>
@@ -73,11 +70,7 @@
 														<img  id="targetIcon"  src="img/targetIcon3.png" style="float:right; margin-top:20px; margin-left:10%; margin-right:10%"  height="15%" width="15%">
 														<select   id="selectedUnit"   data-native-menu="false"  onchange="updateMarkers()">
 																<option value="A" selected="selected">Unit A</option>
-																<option value="B" >Unit B</option>
-																<option value="C" >Unit C</option>
-																<option value="D" >Unit D</option>
-																<option value="E" >Unit E</option>
-																<option value="F" >Unit F</option>
+
 															</select>
 
 
@@ -234,7 +227,7 @@
 
 		          <div class="dataPanelLabel">
 		            <label id="modbusRegisterLabel" >Modbus Register</label>
-		            <input type="text"  id='modbusRegister' value= '50115' style="border: 1px solid darkgray"></input>
+		            <input type="text"  id='modbusRegister' value= '50004' style="border: 1px solid darkgray"></input>
 		          </div>
 
 		          <div class="dataPanelLabel">

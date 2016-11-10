@@ -8,7 +8,7 @@
 
 
     var mapFleetLink;
-    var myLatLng = {lat: 38.491, lng: -122.715};
+    var myLatLng = {lat: 38.491, lng: -122.717};
     var routePath1;
     var routePath2;
     var routeCoordinates1 = [];
@@ -43,19 +43,19 @@
                 'agentURL': '/Bti2MjZSPH-V',
                 'onlineStatus': true,
                 'position' : {lat: 38.491, lon: -122.7135}
-              } ,
+              } /* ,
               4: {
                 'serialNumber': 'D',
                 'macAddress': '0c26904f367',
                 'agentURL': '/7tb6u_BFviM6',
                 'onlineStatus': true,
                 'position' : {lat: 38.4898, lon: -122.7181}
-              },
-              5: {
+              } ,
+               5: {
                 'serialNumber': 'E',
                 'macAddress': '0c2690a24e3',
                 'agentURL': '/4rEw6i2TGCMO',
-                'onlineStatus': true,
+                'onlineStatus': false,
                 'position' : {lat: 38.4882, lon: -122.716}
               },
               6: {
@@ -64,7 +64,7 @@
                 'agentURL': '/uEIDmJoynW-o',
                 'onlineStatus': true,
                 'position' : {lat: 38.495, lon: -122.706}
-              }
+              }*/
 
         };
 
@@ -156,14 +156,14 @@
 
                     traceRoute(dataTable.trace); //display the route trace
                     new Audio("img/smallBell2.wav").play();  // sound chime to indicate successful data packet reception
-                    setTimeout(function(){document.getElementById("expressInterestPacket").disabled = false;}, 10000 );
+                    setTimeout(function(){document.getElementById("expressInterestPacket").disabled = false;}, 15000 );
                   }
             },
            error : function(jqXHR, textStatus, err) {
 
                var errorResponse = jqXHR.status + ' ' + textStatus + ': ' + err + ' - ' + jqXHR.responseText;
                document.getElementById("returnedDataPacket").textContent = errorResponse;
-               setTimeout(function(){document.getElementById("expressInterestPacket").disabled = false;}, 10000 );
+               setTimeout(function(){document.getElementById("expressInterestPacket").disabled = false;}, 15000 );
            }
          });
        }
@@ -302,7 +302,7 @@
       function initMap() {
         // Draw default map
           mapFleetLink = new google.maps.Map(document.getElementById('map'), {
-            zoom: 15,
+            zoom: 16,
            mapTypeId: google.maps.MapTypeId.SATELLITE,
             center: myLatLng
           });
@@ -379,5 +379,5 @@
             buildInterestPacket();
             updateMarkers();
             document.getElementById("expressInterestPacket").disabled = "disabled";
-            setTimeout(function(){document.getElementById("expressInterestPacket").disabled = false;}, 10000 );
+            setTimeout(function(){document.getElementById("expressInterestPacket").disabled = false;}, 15000 );
             });

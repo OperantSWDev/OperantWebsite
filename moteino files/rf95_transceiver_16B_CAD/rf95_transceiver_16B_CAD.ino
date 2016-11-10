@@ -77,7 +77,7 @@
     rf95.spiWrite(RH_RF95_REG_0B_OCP, 0x33);     // Set OCP to 160 mA..KEEP DUTY CYCLE LOW at +20 dBm!!
     rf95.spiWrite(RH_RF95_REG_0C_LNA, 0x03);     // LNA settings: Boost on, 150% LNA curren
     rf95.spiWrite(RH_RF95_REG_1D_MODEM_CONFIG1, 0x82);    // Set BW to 250 kHz, Coding Rate to 4/5, Explicit Header ON
-    rf95.spiWrite(RH_RF95_REG_1E_MODEM_CONFIG2, 0xC4);     // Set SF at 12, TXContinous = Normal, CRC ON 
+    rf95.spiWrite(RH_RF95_REG_1E_MODEM_CONFIG2, 0xA4);     // Set SF at 10, TXContinous = Normal, CRC ON 
     rf95.spiWrite(RH_RF95_REG_21_PREAMBLE_LSB, 0x0A); // Preamble Length LSB (+ 4.25 Symbols)       
     rf95.spiWrite(RH_RF95_REG_22_PAYLOAD_LENGTH, 0x10); // Payload length in bytes. 
     rf95.spiWrite(RH_RF95_REG_26_MODEM_CONFIG3, 0x04); // LNA gain set by the internal AGC loop
