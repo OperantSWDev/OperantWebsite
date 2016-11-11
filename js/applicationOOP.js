@@ -39,18 +39,20 @@
                   },
               3: {
                 'serialNumber': 'C',
-                'macAddress': '0c2690a2732',
-                'agentURL': '/Bti2MjZSPH-V',
-                'onlineStatus': true,
-                'position' : {lat: 38.491, lon: -122.7135}
-              } /* ,
-              4: {
-                'serialNumber': 'D',
                 'macAddress': '0c26904f367',
                 'agentURL': '/7tb6u_BFviM6',
                 'onlineStatus': true,
+                'position' : {lat: 38.491, lon: -122.7135}
+              } /* ,
+
+              4: {
+                'serialNumber': 'D',
+                'macAddress': '0c2690a2732',
+                'agentURL': '/Bti2MjZSPH-V',
+                'onlineStatus': true,
                 'position' : {lat: 38.4898, lon: -122.7181}
-              } ,
+              }  ,
+
                5: {
                 'serialNumber': 'E',
                 'macAddress': '0c2690a24e3',
@@ -126,7 +128,7 @@
           targetCircle.setMap(null);
           document.getElementById("returnedDataPacket").textContent = "Waiting for response...."; // indicate action
           document.getElementById("hexadecimalDataValue").textContent = "--";
-          document.getElementById("decimalDataValue").textContent = "--";
+  //        document.getElementById("decimalDataValue").textContent = "--";
           document.getElementById("stringDataRepresentation").textContent = "--";
           document.getElementById("trace").textContent = "--";
       }
@@ -177,7 +179,7 @@
           var returnedModbusDataHex = "0x" + dataTable.contents;
           document.getElementById("hexadecimalDataValue").textContent = returnedModbusDataHex;
           // and in decimal
-          document.getElementById("decimalDataValue").textContent =  parseInt(returnedModbusDataHex) ;
+//          document.getElementById("decimalDataValue").textContent =  parseInt(returnedModbusDataHex) ;
           // and in string form, assuming modbus data is ascii characters in hex form
           var stringRepresentation = ""
           for (i = 0; i < dataTable.contents.length; i=i+2) {
