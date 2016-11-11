@@ -130,12 +130,15 @@
             
               if (Serial1.available()) {            
                     impRxByte = Serial1.read(); // get one byte from serial port
+                    // Serial.print(impRxByte);
                     messageToLoRa[messageToLoRaPointer] = impRxByte;
                     if (impRxByte == 10) {  // complete if this is the EOL character ('/N') or the message buffer is full
                         messageToLoRaComplete = true;
+                     //   Serial.println("EOL true");
                     }
                     if (messageToLoRaPointer >= SERIAL1_BUFFER_LENGTH-1) {
                         messageToLoRaComplete = true;
+                        Serial.println("BUFFER FULL true");
                     }
                     if (messageToLoRaComplete) {  // If complete, send message to packet parser for LoRa TX
                         int loRaTxDelay =  ((String(messageToLoRa[0]).toInt() - 48) * 10) + (String(messageToLoRa[1]).toInt() - 48); // stupid, don't even ask!
@@ -149,11 +152,19 @@
                             numberPartialTxPackets =1;
                          }
                         int numberTxPackets = numberFullTxPackets + numberPartialTxPackets;
+                                             //   Serial.print("# Packets= ");
+                                             //   Serial.println(numberTxPackets);
                         bool txCanceledFlag = false;
                         for (int i=0; i<numberTxPackets; i++) {
+                         // Serial.print("i= ");
+                         // Serial.println(i);
                             clearloRaTxPacket(); // Clear the loRaTx packet to prep for next one
+                         //   Serial.print("txCanceledFlag= ");
+                         //   Serial.println(txCanceledFlag );
+                            
                             if (!txCanceledFlag) {
                                 if (i != 0) {
+                                  
                                     loRaTxDelay = 0; // 
                                 }       
                                 Serial.print("send ");
@@ -192,6 +203,7 @@
       }
       if (millis() - networkActivityTimer > networkActivityTimeout) {
           networkActivityTimer = millis();
+          Serial.print("network ");
           clearAll();    
       }
   }      
@@ -216,6 +228,7 @@
   }  
 
   void clearloRaTxPacket() {
+    //Serial.println("Clearing LoRaTXPacket");
       for(int i = 0; i < LORA_PAYLOAD_LENGTH;  ++i ) {
           loRaTxPacket[i] = (char)0;
   } }

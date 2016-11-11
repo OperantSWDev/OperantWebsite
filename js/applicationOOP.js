@@ -117,7 +117,7 @@
           default:
               console.log("data model not recognized")
         }
-        document.getElementById("completedInterestPacket").textContent = interestPacket.type +
+//        document.getElementById("completedInterestPacket").textContent = interestPacket.type +
               interestPacket.name ;
       }
 
@@ -126,11 +126,11 @@
           routePath1.setMap(null);
           routePath2.setMap(null);
           targetCircle.setMap(null);
-          document.getElementById("returnedDataPacket").textContent = "Waiting for response...."; // indicate action
-          document.getElementById("hexadecimalDataValue").textContent = "--";
+  //        document.getElementById("returnedDataPacket").textContent = "Waiting for response...."; // indicate action
+  //        document.getElementById("hexadecimalDataValue").textContent = "--";
   //        document.getElementById("decimalDataValue").textContent = "--";
           document.getElementById("stringDataRepresentation").textContent = "--";
-          document.getElementById("trace").textContent = "--";
+  //        document.getElementById("trace").textContent = "--";
       }
 
 
@@ -158,14 +158,14 @@
 
                     traceRoute(dataTable.trace); //display the route trace
                     new Audio("img/smallBell2.wav").play();  // sound chime to indicate successful data packet reception
-                    setTimeout(function(){document.getElementById("expressInterestPacket").disabled = false;}, 15000 );
+                    setTimeout(function(){document.getElementById("expressInterestPacket").disabled = false;}, 10000 );
                   }
             },
            error : function(jqXHR, textStatus, err) {
 
                var errorResponse = jqXHR.status + ' ' + textStatus + ': ' + err + ' - ' + jqXHR.responseText;
-               document.getElementById("returnedDataPacket").textContent = errorResponse;
-               setTimeout(function(){document.getElementById("expressInterestPacket").disabled = false;}, 15000 );
+//               document.getElementById("returnedDataPacket").textContent = errorResponse;
+               setTimeout(function(){document.getElementById("expressInterestPacket").disabled = false;}, 10000 );
            }
          });
        }
@@ -174,10 +174,10 @@
 
 
         function displayData(dataTable) {
-          document.getElementById("returnedDataPacket").textContent = dataTable.contents;
+//          document.getElementById("returnedDataPacket").textContent = dataTable.contents;
           // display in hex
           var returnedModbusDataHex = "0x" + dataTable.contents;
-          document.getElementById("hexadecimalDataValue").textContent = returnedModbusDataHex;
+//          document.getElementById("hexadecimalDataValue").textContent = returnedModbusDataHex;
           // and in decimal
 //          document.getElementById("decimalDataValue").textContent =  parseInt(returnedModbusDataHex) ;
           // and in string form, assuming modbus data is ascii characters in hex form
@@ -187,7 +187,7 @@
               }
           document.getElementById("stringDataRepresentation").textContent = stringRepresentation;
           // display trace dataTable
-          document.getElementById("trace").textContent = dataTable.trace;
+//          document.getElementById("trace").textContent = dataTable.trace;
           }
 
 
@@ -381,5 +381,5 @@
             buildInterestPacket();
             updateMarkers();
             document.getElementById("expressInterestPacket").disabled = "disabled";
-            setTimeout(function(){document.getElementById("expressInterestPacket").disabled = false;}, 15000 );
+            setTimeout(function(){document.getElementById("expressInterestPacket").disabled = false;}, 10000 );
             });

@@ -147,9 +147,8 @@ void RH_RF95::handleInterrupt()
 {
     // Read the interrupt register
     uint8_t irq_flags = spiRead(RH_RF95_REG_12_IRQ_FLAGS);
-    //Serial.println(millis());
-
-
+    //Serial.print("IRQ= ");
+    //Serial.println(irq_flags);
 
     // RK change
     // on CAD Done interrupt, comes here
@@ -308,14 +307,15 @@ bool RH_RF95::send(const uint8_t* data, uint8_t len)
 
 // begin RK change
 // this new function is whole point of library changes, returns true only if TX occurs
+//
 bool RH_RF95::sendIfNoCad(const uint8_t* data, uint8_t len, int txDelay)
 {
+  _cadDetectFlag = false; // reset flag
   // sends the data after a delay, but monitors CAD during the delay time and cancels the
   // transmission if a CAD detect occurs during this delay period
   // delay is specified in milliseconds
     if (len > RH_RF95_MAX_MESSAGE_LEN)
 	     return false;
-
     waitPacketSent(); // Make sure we dont interrupt an outgoing message
     // now start a loop to delay per user request; we check for CAD and bail if it occurs
     unsigned long startTime = millis(); // this time marker used to test when the user specified TX delay is over
@@ -331,8 +331,9 @@ bool RH_RF95::sendIfNoCad(const uint8_t* data, uint8_t len, int txDelay)
         setModeCAD();
         if (_cadDetectFlag) {
           txCanceled = true;
+          Serial.print(" CAD Detect at driver true ");
           _cadDetectFlag = false; // reset flag and check CAD again
-          YIELD;  // not sure if this yield works on my platform?
+//          YIELD;  // not sure if this yield works on my platform?
           return false;
           }
     }  // check CAD again
