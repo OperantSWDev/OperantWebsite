@@ -146,7 +146,7 @@
         $.ajax({
         // send the interest packet to the selected agent and expect a data packet in response
            url: baseURL + fleetLink[accessUnitKey].agentURL + '/expressInterest',
-           timeout: 10000,
+           timeout: 15000,
            data: JSON.stringify(interestPacket), // convert interest packet string to JSON
            type: 'POST',
            success : function(response) {
